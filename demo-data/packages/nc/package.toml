@@ -1,0 +1,5 @@
+[binary]
+path = "bin"
+executable = "nc"
+arguments = "-l 1229"
+network_access = true

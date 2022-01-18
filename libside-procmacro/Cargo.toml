@@ -1,0 +1,16 @@
+[package]
+name = "libside-procmacro"
+version = "0.1.0"
+authors = ["ferrouille <git@ferrouille.nl>"]
+edition = "2021"
+license = "AGPL-3.0"
+repository = "https://github.com/ferrouille/libside"
+description = "Procmacros for libside"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "1.0.5", features = ["full", "extra-traits", "printing"] }
+proc-macro2 = "1.0.30"
+quote = "1.0"

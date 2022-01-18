@@ -1,0 +1,9 @@
+[www]
+path = "www"
+hostname = "shell.test"
+php = true
+
+[www.database]
+name = "injection_db"
+user = "inkjet"
+backup = true

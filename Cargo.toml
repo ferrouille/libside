@@ -1,0 +1,5 @@
+[workspace]
+members = [
+    "libside",
+    "libside-procmacro",
+]
