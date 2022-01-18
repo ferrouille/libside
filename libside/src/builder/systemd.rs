@@ -147,7 +147,7 @@ impl SystemdService {
                 .full_path(),
             contents: data.to_vec().unwrap(),
             path_dependency: override_dir.node,
-            extra_dependencies: Vec::new(),
+            extra_dependencies: vec![ self.file_dependency ],
         }
         .create(context);
         let reload = InstallServices::run(context, &[override_file.node.unwrap()]);

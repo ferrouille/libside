@@ -17,7 +17,7 @@ impl AptPackage<"nginx"> {
     }
 
     pub fn default_service(&self) -> SystemdService {
-        SystemdService::new("nginx", self.graph_node(), vec![self.graph_node()])
+        SystemdService::new("nginx", self.graph_node(), vec![ self.graph_node() ])
     }
 
     pub fn www_data_user(&self) -> User {
