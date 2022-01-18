@@ -33,11 +33,24 @@ impl AptInstall {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum InstallError<S: System> {
+    #[error("unable to execute apt-get: {0}")]
+    FailedToStart(S::CommandError),
+
+    #[error("apt-get failed: {0}")]
+    Unsuccessful(String),
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("unable to execute apt-get: {0}")]
+pub struct CheckError<S: System>(S::CommandError);
+
 impl Requirement for AptInstall {
-    type CreateError<S: System> = NeverError;
+    type CreateError<S: System> = InstallError<S>;
     type ModifyError<S: System> = NeverError;
-    type DeleteError<S: System> = NeverError;
-    type HasBeenCreatedError<S: System> = NeverError;
+    type DeleteError<S: System> = InstallError<S>;
+    type HasBeenCreatedError<S: System> = CheckError<S>;
 
     fn create<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::CreateError<S>> {
         println!("  install: {}", self.name);
@@ -51,11 +64,9 @@ impl Requirement for AptInstall {
                     "--no-install-recommends",
                     self.name.as_str(),
                 ],
-            )
-            .unwrap();
-        assert!(result.is_success()); // TODO
-
-        Ok(())
+            ).map_err(InstallError::FailedToStart)?;
+        
+        result.successful().map_err(|(stdout, stderr)| InstallError::Unsuccessful(format!("{stdout}\n{stderr}")))
     }
 
     fn modify<S: crate::system::System>(
@@ -69,10 +80,9 @@ impl Requirement for AptInstall {
         println!("  uninstall: {}", self.name);
         let result = system
             .execute_command("apt-get", &["remove", "-y", "-q", &self.name])
-            .unwrap();
-        assert!(result.is_success()); // TODO
-
-        Ok(())
+            .map_err(InstallError::FailedToStart)?;
+        
+        result.successful().map_err(|(stdout, stderr)| InstallError::Unsuccessful(format!("{stdout}\n{stderr}")))
     }
 
     fn has_been_created<S: crate::system::System>(
@@ -81,7 +91,7 @@ impl Requirement for AptInstall {
     ) -> Result<bool, Self::HasBeenCreatedError<S>> {
         let result = system
             .execute_command("dpkg-query", &["-W", "-f=${Status}", &self.name])
-            .unwrap();
+            .map_err(CheckError)?;
         if result.is_success() {
             Ok(result.stdout_as_str().starts_with("install"))
         } else {

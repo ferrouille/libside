@@ -363,40 +363,50 @@ impl ServiceRunning {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum SystemdError<S: System> {
+    #[error("unable to execute systemctl: {0}")]
+    FailedToStart(S::CommandError),
+
+    #[error("systemctl failed: {0}")]
+    Unsuccessful(String),
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("unable to execute apt-get: {0}")]
+pub struct CheckError<S: System>(S::CommandError);
+
 impl Requirement for ServiceRunning {
-    type CreateError<S: System> = NeverError;
-    type ModifyError<S: System> = NeverError;
-    type DeleteError<S: System> = NeverError;
-    type HasBeenCreatedError<S: System> = NeverError;
+    type CreateError<S: System> = SystemdError<S>;
+    type ModifyError<S: System> = SystemdError<S>;
+    type DeleteError<S: System> = SystemdError<S>;
+    type HasBeenCreatedError<S: System> = CheckError<S>;
 
     fn create<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::CreateError<S>> {
         println!("  start: {}", self.name);
         let result = system
             .execute_command("systemctl", &["start", &self.name])
-            .unwrap();
-        assert!(result.is_success());
-
-        Ok(())
+            .map_err(SystemdError::FailedToStart)?;
+        
+        result.successful().map_err(|(stdout, stderr)| SystemdError::Unsuccessful(format!("{stdout}\n{stderr}")))
     }
 
     fn modify<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::ModifyError<S>> {
         println!("  restart: {}", self.name);
         let result = system
             .execute_command("systemctl", &["restart", &self.name])
-            .unwrap();
-        assert!(result.is_success());
-
-        Ok(())
+            .map_err(SystemdError::FailedToStart)?;
+        
+        result.successful().map_err(|(stdout, stderr)| SystemdError::Unsuccessful(format!("{stdout}\n{stderr}")))
     }
 
     fn delete<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::DeleteError<S>> {
         println!("  stop: {}", self.name);
         let result = system
             .execute_command("systemctl", &["stop", &self.name])
-            .unwrap();
-        assert!(result.is_success());
-
-        Ok(())
+            .map_err(SystemdError::FailedToStart)?;
+        
+        result.successful().map_err(|(stdout, stderr)| SystemdError::Unsuccessful(format!("{stdout}\n{stderr}")))
     }
 
     fn pre_existing_delete<S: crate::system::System>(
@@ -412,7 +422,7 @@ impl Requirement for ServiceRunning {
     ) -> Result<bool, Self::HasBeenCreatedError<S>> {
         let result = system
             .execute_command("systemctl", &["is-active", &self.name])
-            .unwrap();
+            .map_err(CheckError)?;
         Ok(result.is_success())
     }
 

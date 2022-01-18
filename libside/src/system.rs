@@ -69,6 +69,7 @@ impl System for LocalSystem {
         Ok(CommandResult {
             exit_code: command.status.code(),
             stdout: command.stdout,
+            stderr: command.stderr,
         })
     }
 
@@ -106,12 +107,15 @@ impl System for LocalSystem {
             .args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()?;
 
         // TODO: This may propagate an error that we should handle (i.e. blocking reads return an error)
         let mut stdin_stream = child.stdin.take();
         let mut stdout_stream = child.stdout.take().unwrap();
         let mut stdout = Vec::new();
+        let mut stderr_stream = child.stderr.take().unwrap();
+        let mut stderr = Vec::new();
         let mut to_write = input;
         let mut buf = [0u8; 4096];
         let status = loop {
@@ -134,13 +138,16 @@ impl System for LocalSystem {
                         }
                     }
 
-                    let read = stdout_stream.read(&mut buf)?;
-                    println!("Read: [{}]", std::str::from_utf8(&buf[..read]).unwrap());
+                    let read_stderr = stderr_stream.read(&mut buf)?;
+                    if read_stderr > 0 {
+                        stderr.extend(&buf[..read_stderr]);
+                    }
 
-                    if read == 0 {
+                    let read_stdout = stdout_stream.read(&mut buf)?;
+                    if read_stdout == 0 {
                         break child.wait()?;
                     } else {
-                        stdout.extend(&buf[..read]);
+                        stdout.extend(&buf[..read_stdout]);
                     }
                 }
             }
@@ -149,6 +156,7 @@ impl System for LocalSystem {
         Ok(CommandResult {
             exit_code: status.code(),
             stdout,
+            stderr,
         })
     }
 
@@ -164,6 +172,7 @@ impl System for LocalSystem {
 
 pub struct CommandResult {
     stdout: Vec<u8>,
+    stderr: Vec<u8>,
     exit_code: Option<i32>,
 }
 
@@ -181,8 +190,20 @@ impl CommandResult {
         self.exit_code == Some(0)
     }
 
+    pub fn successful(&self) -> Result<(), (&str, &str)> {
+        if self.is_success() {
+            Ok(())
+        } else {
+            Err((self.stdout_as_str(), self.stderr_as_str()))
+        }
+    }
+
     pub fn stdout_as_str(&self) -> &str {
         std::str::from_utf8(&self.stdout).unwrap()
+    }
+
+    pub fn stderr_as_str(&self) -> &str {
+        std::str::from_utf8(&self.stderr).unwrap()
     }
 }
 
