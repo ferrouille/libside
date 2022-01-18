@@ -466,12 +466,13 @@ impl InstallServices {
         context.add_node(InstallServices, dependencies)
     }
 
-    fn exec<S: System>(&self, system: &mut S) -> Result<(), NeverError> {
+    fn exec<S: System>(&self, system: &mut S) -> Result<(), SystemdError<S>> {
         println!("  service-reload");
         let result = system
             .execute_command("systemctl", &["daemon-reload"])
-            .unwrap();
-        assert!(result.is_success());
+            .map_err(SystemdError::FailedToStart)?;
+        // TODO: Better error
+        result.successful().map_err(|(stdout, stderr)| SystemdError::Unsuccessful(format!("{stdout}\n{stderr}")))?;
 
         let result = system
             .execute_command(
@@ -485,8 +486,7 @@ impl InstallServices {
                     "--no-pager",
                     "--full",
                 ],
-            )
-            .unwrap();
+            ).map_err(SystemdError::FailedToStart)?;
         for line in BufReader::new(&mut Cursor::new(&result.stdout_as_str())).lines() {
             let line = line.unwrap();
             let mut i = line.split_whitespace();
@@ -499,8 +499,10 @@ impl InstallServices {
                 println!("  not-found: {}", name);
                 let result = system
                     .execute_command("systemctl", &["stop", &name])
-                    .unwrap();
-                assert!(result.is_success());
+                    .map_err(SystemdError::FailedToStart)?;
+            
+                // TODO: Better error
+                result.successful().map_err(|(stdout, stderr)| SystemdError::Unsuccessful(format!("{stdout}\n{stderr}")))?;
             }
         }
 
@@ -509,9 +511,9 @@ impl InstallServices {
 }
 
 impl Requirement for InstallServices {
-    type CreateError<S: System> = NeverError;
-    type ModifyError<S: System> = NeverError;
-    type DeleteError<S: System> = NeverError;
+    type CreateError<S: System> = SystemdError<S>;
+    type ModifyError<S: System> = SystemdError<S>;
+    type DeleteError<S: System> = SystemdError<S>;
     type HasBeenCreatedError<S: System> = NeverError;
 
     fn create<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::CreateError<S>> {
