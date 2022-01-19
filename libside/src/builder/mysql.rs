@@ -51,7 +51,7 @@ impl AptPackage<"mariadb-server"> {
 
     pub fn default_service(&self) -> MySqlService {
         MySqlService {
-            service: SystemdService::new("mariadb", self.graph_node(), vec![self.graph_node()]),
+            service: SystemdService::from_name_unchecked("mariadb", self.graph_node(), vec![self.graph_node()]),
         }
     }
 

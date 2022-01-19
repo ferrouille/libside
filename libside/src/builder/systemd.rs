@@ -98,7 +98,7 @@ pub struct SystemdService {
 }
 
 impl SystemdService {
-    pub(crate) fn new(
+    pub fn from_name_unchecked(
         name: &str,
         file_dependency: GraphNodeReference,
         start_dependencies: Vec<GraphNodeReference>,
@@ -236,7 +236,7 @@ impl ServiceData {
         let deps = std::iter::once(created_file.node.unwrap())
             .chain(self.dependencies().copied())
             .collect();
-        SystemdService::new(name, created_file.graph_node().unwrap(), deps)
+        SystemdService::from_name_unchecked(name, created_file.graph_node().unwrap(), deps)
     }
 }
 
