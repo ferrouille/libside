@@ -53,7 +53,6 @@ impl Requirement for AptInstall {
     type HasBeenCreatedError<S: System> = CheckError<S>;
 
     fn create<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::CreateError<S>> {
-        println!("  install: {}", self.name);
         let result = system
             .execute_command(
                 "apt-get",
@@ -77,7 +76,6 @@ impl Requirement for AptInstall {
     }
 
     fn delete<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::DeleteError<S>> {
-        println!("  uninstall: {}", self.name);
         let result = system
             .execute_command("apt-get", &["remove", "-y", "-q", &self.name])
             .map_err(InstallError::FailedToStart)?;

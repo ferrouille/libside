@@ -130,7 +130,6 @@ impl Requirement for CreateUser {
     type HasBeenCreatedError<S: System> = NeverError;
 
     fn create<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::CreateError<S>> {
-        println!("  useradd: {}", self.name);
         let group_str;
         let mut args = Vec::new();
 
@@ -165,7 +164,6 @@ impl Requirement for CreateUser {
     }
 
     fn modify<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::ModifyError<S>> {
-        println!("  usermod: {}", self.name);
         let group_str;
         let mut args = Vec::new();
 
@@ -193,7 +191,6 @@ impl Requirement for CreateUser {
     }
 
     fn delete<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::DeleteError<S>> {
-        println!("  userdel: {}", self.name);
         let result = system.execute_command("userdel", &[&self.name]).unwrap();
         assert!(result.is_success()); // TODO
 
@@ -260,7 +257,6 @@ impl Requirement for CreateGroup {
     type HasBeenCreatedError<S: System> = NeverError;
 
     fn create<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::CreateError<S>> {
-        println!("  groupadd: {}", self.name);
         let mut args = Vec::new();
         if self.system {
             args.push("--system");
@@ -282,7 +278,6 @@ impl Requirement for CreateGroup {
     }
 
     fn delete<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::DeleteError<S>> {
-        println!("  groupdel: {}", self.name);
         let result = system.execute_command("groupdel", &[&self.name]).unwrap();
         assert!(result.is_success()); // TODO
 

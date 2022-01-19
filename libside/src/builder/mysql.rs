@@ -206,7 +206,6 @@ impl Requirement for CreateMySqlDatabase {
     type HasBeenCreatedError<S: System> = NeverError;
 
     fn create<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::CreateError<S>> {
-        println!("  mysqldb: {}", self.name);
         let query = format!("CREATE DATABASE `{}`;", self.name);
         let result = system
             .execute_command_with_input("mysql", &[], query.as_bytes())
@@ -292,7 +291,6 @@ impl Requirement for CreateMySqlUser {
     type HasBeenCreatedError<S: System> = NeverError;
 
     fn create<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::CreateError<S>> {
-        println!("  mysqluser: {}", self.name);
         // TODO: Escape username & password
         let query = format!(
             "CREATE USER '{}'@'localhost' IDENTIFIED BY '{}'; FLUSH PRIVILEGES;",
@@ -397,7 +395,6 @@ impl Requirement for CreateMySqlGrant {
     type HasBeenCreatedError<S: System> = NeverError;
 
     fn create<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::CreateError<S>> {
-        println!("  grant: {}", self.user);
         let query = format!(
             "GRANT {p} ON `{db}`.* TO '{u}'@'localhost'; FLUSH PRIVILEGES;",
             p = self.privileges,
@@ -413,7 +410,6 @@ impl Requirement for CreateMySqlGrant {
     }
 
     fn modify<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::ModifyError<S>> {
-        println!("  grant: {}", self.user);
         let query = format!("REVOKE ALL PRIVILEGES ON `{db}`.* FROM '{u}'@'localhost'; GRANT {p} ON `{db}`.* TO '{u}'@'localhost'; FLUSH PRIVILEGES; FLUSH PRIVILEGES;", p = self.privileges, db = self.database, u = self.user);
         let result = system
             .execute_command_with_input("mysql", &[], query.as_bytes())
@@ -424,7 +420,6 @@ impl Requirement for CreateMySqlGrant {
     }
 
     fn delete<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::DeleteError<S>> {
-        println!("  revoke: {}", self.user);
         let query = format!(
             "REVOKE ALL PRIVILEGES ON `{db}`.* FROM '{u}'@'localhost'; FLUSH PRIVILEGES;",
             db = self.database,

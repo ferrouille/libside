@@ -152,7 +152,6 @@ impl Requirement for FileWithContents {
     type HasBeenCreatedError<S: System> = S::Error;
 
     fn create<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::CreateError<S>> {
-        println!("  create: {}", self.to.display());
         system
             .copy_file(&self.local_file, &self.to)
             .map_err(|inner| FileCreateError {
@@ -163,7 +162,6 @@ impl Requirement for FileWithContents {
     }
 
     fn modify<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::ModifyError<S>> {
-        println!("  update: {}", self.to.display());
         system
             .copy_file(&self.local_file, &self.to)
             .map_err(|inner| FileCreateError {
@@ -174,7 +172,6 @@ impl Requirement for FileWithContents {
     }
 
     fn delete<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::DeleteError<S>> {
-        println!("  delete: {}", self.to.display());
         system
             .remove_file(&self.to)
             .map_err(|inner| FileDeleteError {
@@ -275,9 +272,6 @@ impl Requirement for CreateDirectory {
     type HasBeenCreatedError<S: System> = S::Error;
 
     fn create<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::CreateError<S>> {
-        // TODO: use system instead
-
-        println!("  mkdir: {}", self.path.display());
         system
             .make_dir(&self.path)
             .map_err(|inner| DirectoryCreateError {
@@ -294,7 +288,6 @@ impl Requirement for CreateDirectory {
     }
 
     fn delete<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::DeleteError<S>> {
-        println!("  rmdir: {}", self.path.display());
         system
             .remove_dir(&self.path)
             .map_err(|inner| DirectoryDeleteError {
@@ -356,7 +349,6 @@ impl Requirement for Delete {
     type HasBeenCreatedError<S: System> = NeverError;
 
     fn create<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::CreateError<S>> {
-        println!("  del: {}", self.path.display());
         system.copy_file(&self.path, &self.copy_to).unwrap();
         system.remove_file(&self.path).unwrap();
 
@@ -371,7 +363,6 @@ impl Requirement for Delete {
     }
 
     fn delete<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::DeleteError<S>> {
-        println!("  undel: {}", self.path.display());
         system.copy_file(&self.copy_to, &self.path).unwrap();
         system.remove_file(&self.copy_to).unwrap();
         Ok(())

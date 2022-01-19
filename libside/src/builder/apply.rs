@@ -93,8 +93,6 @@ pub fn copy<U: AsRef<Path>, V: AsRef<Path>>(from: U, to: V) -> Result<(), std::i
     let input_root = PathBuf::from(from.as_ref()).components().count();
 
     while let Some(working_path) = stack.pop() {
-        println!("    enter: {:?}", &working_path);
-
         // Generate a relative path
         let src: PathBuf = working_path.components().skip(input_root).collect();
 
@@ -105,7 +103,6 @@ pub fn copy<U: AsRef<Path>, V: AsRef<Path>>(from: U, to: V) -> Result<(), std::i
             output_root.join(&src)
         };
         if fs::metadata(&dest).is_err() {
-            println!("      mkdir: {:?}", dest);
             fs::create_dir_all(&dest)?;
         }
 
@@ -135,7 +132,6 @@ fn copy_file(path: &PathBuf, dest: &PathBuf) -> Result<(), std::io::Error> {
     Ok(if path.is_symlink() {
         todo!()
     } else {
-        println!("       copy: {:?} -> {:?}", &path, &dest);
         fs::copy(&path, &dest)?;
         // TODO: chown, chgroup, chmod
     })

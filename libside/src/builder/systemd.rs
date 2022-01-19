@@ -383,7 +383,6 @@ impl Requirement for ServiceRunning {
     type HasBeenCreatedError<S: System> = CheckError<S>;
 
     fn create<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::CreateError<S>> {
-        println!("  start: {}", self.name);
         let result = system
             .execute_command("systemctl", &["start", &self.name])
             .map_err(SystemdError::FailedToStart)?;
@@ -392,7 +391,6 @@ impl Requirement for ServiceRunning {
     }
 
     fn modify<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::ModifyError<S>> {
-        println!("  restart: {}", self.name);
         let result = system
             .execute_command("systemctl", &["restart", &self.name])
             .map_err(SystemdError::FailedToStart)?;
@@ -401,7 +399,6 @@ impl Requirement for ServiceRunning {
     }
 
     fn delete<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::DeleteError<S>> {
-        println!("  stop: {}", self.name);
         let result = system
             .execute_command("systemctl", &["stop", &self.name])
             .map_err(SystemdError::FailedToStart)?;
@@ -467,7 +464,6 @@ impl InstallServices {
     }
 
     fn exec<S: System>(&self, system: &mut S) -> Result<(), SystemdError<S>> {
-        println!("  service-reload");
         let result = system
             .execute_command("systemctl", &["daemon-reload"])
             .map_err(SystemdError::FailedToStart)?;

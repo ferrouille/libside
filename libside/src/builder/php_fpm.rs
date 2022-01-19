@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use super::{
     apt::AptPackage,
-    path::{FromPackage, Path},
+    path::{FromPackage, Path}, systemd::SystemdService,
 };
 
 impl AptPackage<"php8.0-fpm"> {
@@ -13,6 +13,10 @@ impl AptPackage<"php8.0-fpm"> {
             loc: FromPackage,
             node: Some(self.graph_node()),
         }
+    }
+
+    pub fn default_service(&self) -> SystemdService {
+        SystemdService::from_name_unchecked("php8.0-fpm", self.graph_node(), vec![ self.graph_node() ])
     }
 
     pub fn default_service_files(&self) -> Vec<Path<FromPackage>> {
@@ -41,6 +45,10 @@ impl AptPackage<"php7.4-fpm"> {
             loc: FromPackage,
             node: Some(self.graph_node()),
         }
+    }
+
+    pub fn default_service(&self) -> SystemdService {
+        SystemdService::from_name_unchecked("php7.4-fpm", self.graph_node(), vec![ self.graph_node() ])
     }
 
     pub fn default_service_files(&self) -> Vec<Path<FromPackage>> {
