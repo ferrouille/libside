@@ -382,7 +382,7 @@ impl<'r, R: Requirement> ApplySequence<'r, R> {
         };
 
         for (index, entry) in self.undo.iter().enumerate() {
-            println!("  vanish : {}", entry.requirement);
+            println!("  undo: {}", entry.requirement);
             if entry.pre_existing {
                 entry.requirement.pre_existing_delete(system)
             } else {
@@ -464,6 +464,7 @@ impl<'r, R: Requirement> ApplySequence<'r, R> {
             Position::Todo(index) => index,
         };
         for entry in self.todo.iter().take(num_todo).rev() {
+            println!("  undo: {}", entry.requirement);
             if entry.requirement.can_undo() {
                 if info.pre_existing.contains(&entry.source) {
                     entry.requirement.pre_existing_delete(system)
@@ -479,6 +480,7 @@ impl<'r, R: Requirement> ApplySequence<'r, R> {
             Position::Todo(_) => self.undo.len(),
         };
         for entry in self.undo.iter().take(num_undo).rev() {
+            println!("  require: {}", entry.requirement);
             let r = &entry.requirement;
             match r.has_been_created(system) {
                 Ok(has_been_created) => {
