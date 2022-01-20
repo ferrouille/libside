@@ -7,6 +7,7 @@ use std::fmt::Display;
 use std::io::{BufRead, BufReader, Cursor, Write};
 
 use super::fs::{ConfigFileData, CreateDirectory, FileWithContents};
+use super::path::WillBeCreated;
 use super::{path::BindPath, Chroot, Context, Mounted, Path};
 
 pub trait SystemdUnit {
@@ -95,6 +96,7 @@ pub struct SystemdService {
     full_name: String,
     file_dependency: GraphNodeReference,
     pub(crate) start_dependencies: Vec<GraphNodeReference>,
+    override_dir: Option<Path<WillBeCreated>>,
 }
 
 impl SystemdService {
@@ -108,6 +110,7 @@ impl SystemdService {
             full_name: format!("{}.service", name),
             file_dependency,
             start_dependencies,
+            override_dir: None,
         }
     }
 
@@ -139,8 +142,10 @@ impl SystemdService {
     ) where
         R: Supports<CreateDirectory> + Supports<FileWithContents> + Supports<InstallServices>,
     {
-        let dir = context.existing("/etc/systemd/system/");
-        let override_dir = dir.make_dir(context, format!("{}.service.d", self.name));
+        let override_dir = self.override_dir.get_or_insert_with(|| {
+            let dir = context.existing("/etc/systemd/system/");
+            dir.make_dir(context, format!("{}.service.d", self.name))
+        });
         let override_file = ConfigFileData {
             path: override_dir
                 .join(format!("{}.conf", override_name))
