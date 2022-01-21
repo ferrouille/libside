@@ -461,6 +461,11 @@ impl Requirement for CreateMySqlGrant {
         let result = system
             .execute_command_with_input("mysql", &["--column-names=false"], query.as_bytes())
             .unwrap();
+        if !result.is_success() && result.stderr_as_str().contains("ERROR 1141 (42000)") {
+            // ERROR 1141 (42000) at line 1: There is no such grant defined for user ...
+            return Ok(false);
+        }
+
         assert!(result.is_success()); // TODO
 
         let grants = result.stdout_as_str();
