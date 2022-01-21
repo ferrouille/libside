@@ -141,7 +141,7 @@ impl<L: Clone> Path<L> {
         self.full_path().file_name().map(ToOwned::to_owned)
     }
 
-    pub(crate) fn full_path(&self) -> PathBuf {
+    pub fn full_path(&self) -> PathBuf {
         if !path_is_safe(&self.path) {
             panic!("Path traversal for: {:?}", self.path);
         }
@@ -153,7 +153,7 @@ impl<L: Clone> Path<L> {
         }
     }
 
-    pub(crate) fn unchecked_join<P: AsRef<StdPath>>(&self, path: P) -> Result<Self, ()> {
+    pub fn join_unchecked<P: AsRef<StdPath>>(&self, path: P) -> Result<Self, ()> {
         let path = normalize_path(path.as_ref());
         if path.is_absolute() {
             return Err(());
@@ -167,7 +167,7 @@ impl<L: Clone> Path<L> {
         })
     }
 
-    pub(crate) fn cast<T: Clone>(self, loc: T) -> Path<T> {
+    pub fn cast_unchecked<T: Clone>(self, loc: T) -> Path<T> {
         Path {
             base: self.base,
             path: self.path,
@@ -176,7 +176,7 @@ impl<L: Clone> Path<L> {
         }
     }
 
-    pub(crate) fn with_node(self, node: GraphNodeReference) -> Self {
+    pub fn with_node(self, node: GraphNodeReference) -> Self {
         Path {
             base: self.base,
             path: self.path,
@@ -208,7 +208,7 @@ impl<L: Clone> Path<L> {
 
 impl<L: Clone + SpeculatePath> Path<L> {
     pub fn join<P: AsRef<StdPath>>(&self, path: P) -> Path<L> {
-        self.unchecked_join(path).unwrap()
+        self.join_unchecked(path).unwrap()
     }
 }
 
@@ -249,7 +249,7 @@ impl<L: Clone> AsParam for Path<L> {
 
 impl<'a> Path<Source<'a>> {
     pub fn join<P: AsRef<StdPath>>(&self, name: P) -> Result<Path<Source<'a>>, ()> {
-        let new = self.unchecked_join(name)?;
+        let new = self.join_unchecked(name)?;
         if self.loc.0.files.contains(&new.full_path()) {
             Ok(new)
         } else {
@@ -276,12 +276,12 @@ impl Path<Existing> {
         );
 
         // unwrap is OK because name is a single, normal, component
-        let new = self.unchecked_join(name).unwrap();
+        let new = self.join_unchecked(name).unwrap();
         let node = context
             .graph
             .add(CreateDirectory::new(new.full_path()), self.node.as_ref());
 
-        new.cast(WillBeCreated).with_node(node)
+        new.cast_unchecked(WillBeCreated).with_node(node)
     }
 }
 
@@ -303,7 +303,7 @@ impl Path<Chroot> {
         );
 
         // unwrap is OK because name is a single, normal, component
-        let new = self.unchecked_join(name).unwrap();
+        let new = self.join_unchecked(name).unwrap();
         let node = context.graph.add(
             CreateDirectory::new_without_cleanup(new.full_path()),
             self.node.as_ref(),
@@ -345,7 +345,7 @@ impl Path<Userdata> {
         );
 
         // unwrap is OK because name is a single, normal, component
-        let new = self.unchecked_join(name).unwrap();
+        let new = self.join_unchecked(name).unwrap();
         let node = context.graph.add(
             CreateDirectory::new_without_cleanup(new.full_path()),
             self.node.as_ref(),
@@ -373,7 +373,7 @@ impl Path<Backup> {
         );
 
         // unwrap is OK because name is a single, normal, component
-        let new = self.unchecked_join(name).unwrap();
+        let new = self.join_unchecked(name).unwrap();
         let node = context.graph.add(
             CreateDirectory::new_without_cleanup(new.full_path()),
             self.node.as_ref(),
@@ -401,7 +401,7 @@ impl Path<SharedConfig> {
         );
 
         // unwrap is OK because name is a single, normal, component
-        let new = self.unchecked_join(name).unwrap();
+        let new = self.join_unchecked(name).unwrap();
         let node = context
             .graph
             .add(CreateDirectory::new(new.full_path()), self.node.as_ref());
@@ -426,8 +426,8 @@ impl Path<SharedConfig> {
         );
 
         // unwrap is OK because name is a single, normal, component
-        let new = self.unchecked_join(&file.path()).unwrap();
-        file.set_full_path(&new).create(context).cast(SharedConfig)
+        let new = self.join_unchecked(&file.path()).unwrap();
+        file.set_full_path(&new).create(context).cast_unchecked(SharedConfig)
     }
 }
 

@@ -284,7 +284,7 @@ impl<'a, R: Requirement> Context<'a, R> {
         assert!(path_is_safe(name));
 
         let userdata_root = self.userdata_root();
-        let path = userdata_root.unchecked_join(name).unwrap().full_path();
+        let path = userdata_root.join_unchecked(name).unwrap().full_path();
         let node = self.graph.add(
             CreateDirectory::new_without_cleanup(path.clone()),
             userdata_root.node.as_ref(),
