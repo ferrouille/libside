@@ -16,6 +16,7 @@ pub trait SystemdUnit {
     fn file_dependency(&self) -> GraphNodeReference;
 }
 
+#[derive(Clone)]
 pub struct SandboxBuilder {
     root_dir: Path<Chroot>,
     bind_read_only_paths: Vec<String>,

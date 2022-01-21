@@ -115,6 +115,7 @@ macro_rules! directive_types {
 macro_rules! directive_fields {
     ($struct_name:ident [ $(($name:ident $(= $real_name:expr)?, $($ty:tt)*))* ]) => {
         paste::item! {
+            #[derive(Clone)]
             pub struct $struct_name {
                 pub graph_dependencies: Vec<GraphNodeReference>,
                 $( [<$name:snake>] : directive_concrete_type!($name, $($ty)*)),*

@@ -377,7 +377,8 @@ impl Builder for Demo {
                         fpm_socket: &listen_sock,
                     ).rename(package.name()));
 
-                    data.nginx.default_service()
+                    data.nginx
+                        .default_service()
                         .add_start_dependencies(site_file.graph_node());
                     data.sites
                         .push((document_root, Some((listen_sock, started))));
@@ -391,7 +392,8 @@ impl Builder for Demo {
                         .rename(package.name()),
                     );
 
-                    data.nginx.default_service()
+                    data.nginx
+                        .default_service()
                         .add_start_dependencies(site_file.graph_node());
                     data.sites.push((document_root, None));
                 }

@@ -50,11 +50,7 @@ impl AptPackage for MariaDb {
     fn create(node: GraphNodeReference) -> Self {
         MariaDb {
             service: MySqlService {
-                service: SystemdService::from_name_unchecked(
-                    "mariadb",
-                    node,
-                    vec![node],
-                ),
+                service: SystemdService::from_name_unchecked("mariadb", node, vec![node]),
             },
             node,
         }
