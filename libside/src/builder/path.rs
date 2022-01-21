@@ -427,7 +427,9 @@ impl Path<SharedConfig> {
 
         // unwrap is OK because name is a single, normal, component
         let new = self.join_unchecked(&file.path()).unwrap();
-        file.set_full_path(&new).create(context).cast_unchecked(SharedConfig)
+        file.set_full_path(&new)
+            .create(context)
+            .cast_unchecked(SharedConfig)
     }
 }
 

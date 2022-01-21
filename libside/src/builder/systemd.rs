@@ -152,7 +152,7 @@ impl SystemdService {
                 .full_path(),
             contents: data.to_vec().unwrap(),
             path_dependency: override_dir.node,
-            extra_dependencies: vec![ self.file_dependency ],
+            extra_dependencies: vec![self.file_dependency],
         }
         .create(context);
         let reload = InstallServices::run(context, &[override_file.node.unwrap()]);
@@ -391,24 +391,30 @@ impl Requirement for ServiceRunning {
         let result = system
             .execute_command("systemctl", &["start", &self.name])
             .map_err(SystemdError::FailedToStart)?;
-        
-        result.successful().map_err(|(stdout, stderr)| SystemdError::Unsuccessful(format!("{stdout}\n{stderr}")))
+
+        result
+            .successful()
+            .map_err(|(stdout, stderr)| SystemdError::Unsuccessful(format!("{stdout}\n{stderr}")))
     }
 
     fn modify<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::ModifyError<S>> {
         let result = system
             .execute_command("systemctl", &["restart", &self.name])
             .map_err(SystemdError::FailedToStart)?;
-        
-        result.successful().map_err(|(stdout, stderr)| SystemdError::Unsuccessful(format!("{stdout}\n{stderr}")))
+
+        result
+            .successful()
+            .map_err(|(stdout, stderr)| SystemdError::Unsuccessful(format!("{stdout}\n{stderr}")))
     }
 
     fn delete<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::DeleteError<S>> {
         let result = system
             .execute_command("systemctl", &["stop", &self.name])
             .map_err(SystemdError::FailedToStart)?;
-        
-        result.successful().map_err(|(stdout, stderr)| SystemdError::Unsuccessful(format!("{stdout}\n{stderr}")))
+
+        result
+            .successful()
+            .map_err(|(stdout, stderr)| SystemdError::Unsuccessful(format!("{stdout}\n{stderr}")))
     }
 
     fn pre_existing_delete<S: crate::system::System>(
@@ -473,7 +479,9 @@ impl InstallServices {
             .execute_command("systemctl", &["daemon-reload"])
             .map_err(SystemdError::FailedToStart)?;
         // TODO: Better error
-        result.successful().map_err(|(stdout, stderr)| SystemdError::Unsuccessful(format!("{stdout}\n{stderr}")))?;
+        result.successful().map_err(|(stdout, stderr)| {
+            SystemdError::Unsuccessful(format!("{stdout}\n{stderr}"))
+        })?;
 
         let result = system
             .execute_command(
@@ -487,7 +495,8 @@ impl InstallServices {
                     "--no-pager",
                     "--full",
                 ],
-            ).map_err(SystemdError::FailedToStart)?;
+            )
+            .map_err(SystemdError::FailedToStart)?;
         for line in BufReader::new(&mut Cursor::new(&result.stdout_as_str())).lines() {
             let line = line.unwrap();
             let mut i = line.split_whitespace();
@@ -501,9 +510,11 @@ impl InstallServices {
                 let result = system
                     .execute_command("systemctl", &["stop", &name])
                     .map_err(SystemdError::FailedToStart)?;
-            
+
                 // TODO: Better error
-                result.successful().map_err(|(stdout, stderr)| SystemdError::Unsuccessful(format!("{stdout}\n{stderr}")))?;
+                result.successful().map_err(|(stdout, stderr)| {
+                    SystemdError::Unsuccessful(format!("{stdout}\n{stderr}"))
+                })?;
             }
         }
 

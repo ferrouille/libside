@@ -1,12 +1,28 @@
 use std::path::PathBuf;
 
+use crate::graph::GraphNodeReference;
+
 use super::{
     path::{FromPackage, Path},
     Group, User,
     {apt::AptPackage, systemd::SystemdService},
 };
 
-impl AptPackage<"nginx"> {
+pub struct Nginx(GraphNodeReference);
+
+impl AptPackage for Nginx {
+    const NAME: &'static str = "nginx";
+
+    fn create(node: GraphNodeReference) -> Self {
+        Nginx(node)
+    }
+
+    fn graph_node(&self) -> GraphNodeReference {
+        self.0
+    }
+}
+
+impl Nginx {
     pub fn binary(&self) -> Path<FromPackage> {
         Path {
             base: PathBuf::from("/usr/sbin/nginx"),
@@ -17,7 +33,7 @@ impl AptPackage<"nginx"> {
     }
 
     pub fn default_service(&self) -> SystemdService {
-        SystemdService::from_name_unchecked("nginx", self.graph_node(), vec![ self.graph_node() ])
+        SystemdService::from_name_unchecked("nginx", self.graph_node(), vec![self.graph_node()])
     }
 
     pub fn www_data_user(&self) -> User {

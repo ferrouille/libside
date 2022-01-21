@@ -39,7 +39,21 @@ pub struct MySqlService {
     service: SystemdService,
 }
 
-impl AptPackage<"mariadb-server"> {
+pub struct MariaDb(GraphNodeReference);
+
+impl AptPackage for MariaDb {
+    const NAME: &'static str = "mariadb-server";
+
+    fn create(node: GraphNodeReference) -> Self {
+        MariaDb(node)
+    }
+
+    fn graph_node(&self) -> GraphNodeReference {
+        self.0
+    }
+}
+
+impl MariaDb {
     pub fn binary(&self) -> Path<FromPackage> {
         Path {
             base: PathBuf::from("/usr/sbin/mariadb"),
@@ -51,7 +65,11 @@ impl AptPackage<"mariadb-server"> {
 
     pub fn default_service(&self) -> MySqlService {
         MySqlService {
-            service: SystemdService::from_name_unchecked("mariadb", self.graph_node(), vec![self.graph_node()]),
+            service: SystemdService::from_name_unchecked(
+                "mariadb",
+                self.graph_node(),
+                vec![self.graph_node()],
+            ),
         }
     }
 

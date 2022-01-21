@@ -1,10 +1,4 @@
-#![allow(incomplete_features)] // adt_const_params
-#![feature(
-    generic_associated_types,
-    adt_const_params,
-    negative_impls,
-    auto_traits
-)]
+#![feature(generic_associated_types, negative_impls, auto_traits)]
 
 use crate::{builder::Packages, graph::VerificationState};
 use apply::SystemState;

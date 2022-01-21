@@ -4,30 +4,25 @@ use std::process::exit;
 use std::time::Duration;
 
 use libside::builder::apt::{AptInstall, AptPackage};
-use libside::builder::fs::{
-    Chmod, Chown, ConfigFileData, CreateDirectory, Delete, FileWithContents,
-};
-use libside::builder::mysql::{
-    CreateMySqlDatabase, CreateMySqlGrant, CreateMySqlUser, Database, MySqlService, Privilege,
-};
+use libside::builder::fs::*;
+use libside::builder::mysql::*;
+use libside::builder::nginx::Nginx;
 use libside::builder::path::{Bindable, Existing, Exposed, Path, SharedConfig};
-use libside::builder::systemd::{
-    EnableService, InstallServices, SandboxBuilder, ServiceData, ServiceRunning, SystemdService,
-    TimerData,
-};
-use libside::builder::users::{CreateGroup, CreateUser, Group, User};
+use libside::builder::php_fpm::*;
+use libside::builder::systemd::*;
+use libside::builder::users::*;
 use libside::builder::{AsParam, Builder, Context};
-use libside::config::systemd::{
-    DevicePolicy, Install, ProcSubset, ProtectProc, ResourceControl, Service, ServiceType, Timer,
-    Unit,
-};
+use libside::config::systemd::*;
 use libside::graph::GraphNodeReference;
-use libside::requirements;
 use libside::requirements::{Requirement, Supports};
 use libside::secrets::keys::AsymmetricKey;
 use libside::secrets::password::{Alphanumeric, Password};
 use libside::{config_file, SiDe};
+use libside::{generic_apt_package, requirements};
 use serde::{Deserialize, Serialize};
+
+generic_apt_package!(Rsync => "rsync");
+generic_apt_package!(Ssh => "ssh");
 
 #[derive(Deserialize)]
 enum Config {
@@ -91,18 +86,18 @@ struct Demo;
 struct DemoData {
     fpm_socks_group: Group,
     nginx_user: (User, Group),
-    nginx: AptPackage<"nginx">,
+    nginx: Nginx,
     nginx_service: SystemdService,
     nginx_sites: Path<SharedConfig>,
     nginx_config_dir: Path<SharedConfig>,
-    php_fpm: Option<AptPackage<"php8.0-fpm">>,
+    php_fpm: Option<PhpFpm<Php80>>,
     sites: Vec<(Path<Exposed>, Option<(Path<Existing>, GraphNodeReference)>)>,
     mysql: Option<MySqlData>,
     backup: Option<BackupData>,
 }
 
 struct MySqlData {
-    mysql: AptPackage<"mariadb-server">,
+    mysql: MariaDb,
     service: MySqlService,
 }
 
@@ -125,8 +120,8 @@ impl MySqlData {
     where
         R: Supports<AptInstall> + Supports<ServiceRunning>,
     {
-        let mysql = AptPackage::<"mariadb-server">::install(context);
-        let service: MySqlService = mysql.default_service();
+        let mysql = MariaDb::install(context);
+        let service = mysql.default_service();
 
         MySqlData { mysql, service }
     }
@@ -184,26 +179,7 @@ impl Builder for Demo {
         let fpm_socks_group = Group::add(context, "fpm-socks", true);
         let nginx_user = User::add(context, "nginx-www", |c| c.add_group(&fpm_socks_group));
 
-        let password: Password<8, Alphanumeric> = context.secret("mysql_password");
-
-        let mysql = AptPackage::<"mariadb-server">::install(context);
-        let mut mysql = mysql.default_service();
-        let mysql = mysql.run(context);
-        let db = mysql.create_database(context, "hello_world");
-        let user = mysql.create_user(context, "hello_world_user", password.as_ref());
-        user.grant(
-            context,
-            IntoIterator::into_iter([
-                Privilege::Select,
-                Privilege::Update,
-                Privilege::Delete,
-                Privilege::Insert,
-            ])
-            .collect(),
-            &db,
-        );
-
-        let nginx = AptPackage::<"nginx">::install(context);
+        let nginx = Nginx::install(context);
         Ok(DemoData {
             fpm_socks_group,
             nginx_service: nginx.default_service(),
@@ -227,7 +203,6 @@ impl Builder for Demo {
         match &package.config() {
             Config::Www(www) => {
                 let base_path = package.root().join(&www.path)?;
-                // let ownership = Ownership::new(&nginx.www_data_user(), &nginx.www_data_group());
                 let exposed_base_path = context.expose(&base_path);
                 let document_root = www
                     .document_root
@@ -237,13 +212,25 @@ impl Builder for Demo {
 
                 if www.php {
                     let php_fpm = data.php_fpm.get_or_insert_with(|| {
-                        let php_fpm = AptPackage::<"php8.0-fpm">::install(context);
-                        let dependencies = php_fpm
-                            .default_service_files()
-                            .into_iter()
-                            .map(|file| context.delete_default_system_file(file))
-                            .collect::<Vec<_>>();
-                        InstallServices::run(context, &dependencies);
+                        // disable the default php-fpm service, but don't remove it.
+                        // apt packages will fail to install if they can't restart the php-fpm service.
+                        let php_fpm = PhpFpm::<Php80>::install(context);
+                        php_fpm.default_service().service_override(
+                            context,
+                            "disable",
+                            ServiceData {
+                                unit: Unit::new(),
+                                install: Install::new(),
+                                service: Service::new()
+                                    .service_type(ServiceType::Notify)
+                                    .exec_start_push("/bin/true")
+                                    .exec_start_pre_push("")
+                                    .exec_start_post_push("")
+                                    .exec_reload_push("/bin/true"),
+                                exec: Exec::new(),
+                                resource_control: ResourceControl::new(),
+                            },
+                        );
 
                         php_fpm
                     });
@@ -381,7 +368,7 @@ impl Builder for Demo {
                     service.add_start_dependencies([fpm_user.graph_node(), fpm_group.graph_node()]);
 
                     if let Some(_) = &www.database {
-                        let pdo = AptPackage::<"php-mysql">::install(context);
+                        let pdo = PhpMySql::install(context);
                         service.add_start_dependencies([pdo.graph_node()]);
                     }
 
@@ -716,8 +703,8 @@ impl Builder for Demo {
 
                 sb.bind_read_only_path(context.shared_backup_root().bind());
 
-                AptPackage::<"rsync">::install(context);
-                AptPackage::<"ssh">::install(context);
+                Rsync::install(context);
+                Ssh::install(context);
 
                 let runfile = context.config_root().make_file(
                     context,

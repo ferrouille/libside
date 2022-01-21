@@ -1,22 +1,42 @@
 use super::Context;
+pub use crate::generic_apt_package;
 use crate::graph::GraphNodeReference;
 use crate::requirements::{Requirement, Supports};
 use crate::system::{NeverError, System};
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 
-pub struct AptPackage<const NAME: &'static str>(GraphNodeReference);
+#[macro_export]
+macro_rules! generic_apt_package {
+    ($vis:vis $struct:ident => $apt_package:literal) => {
+        $vis struct $struct($crate::graph::GraphNodeReference);
 
-impl<const NAME: &'static str> AptPackage<NAME> {
-    pub fn install<R: Requirement + Supports<AptInstall>>(
-        context: &mut Context<R>,
-    ) -> AptPackage<NAME> {
-        // TODO: Prevent installing twice
-        AptPackage(context.add_node(AptInstall::new(NAME), &[]))
+        impl $crate::builder::apt::AptPackage for $struct {
+            const NAME: &'static str = $apt_package;
+
+            fn create(node: $crate::graph::GraphNodeReference) -> Self {
+                Self(node)
+            }
+
+            fn graph_node(&self) -> GraphNodeReference {
+                self.0
+            }
+        }
     }
+}
 
-    pub fn graph_node(&self) -> GraphNodeReference {
-        self.0
+pub trait AptPackage {
+    const NAME: &'static str;
+
+    fn create(node: GraphNodeReference) -> Self;
+
+    fn graph_node(&self) -> GraphNodeReference;
+
+    fn install<R: Requirement + Supports<AptInstall>>(context: &mut Context<R>) -> Self
+    where
+        Self: Sized,
+    {
+        Self::create(context.add_node(AptInstall::new(Self::NAME), &[]))
     }
 }
 
@@ -63,9 +83,12 @@ impl Requirement for AptInstall {
                     "--no-install-recommends",
                     self.name.as_str(),
                 ],
-            ).map_err(InstallError::FailedToStart)?;
-        
-        result.successful().map_err(|(stdout, stderr)| InstallError::Unsuccessful(format!("{stdout}\n{stderr}")))
+            )
+            .map_err(InstallError::FailedToStart)?;
+
+        result
+            .successful()
+            .map_err(|(stdout, stderr)| InstallError::Unsuccessful(format!("{stdout}\n{stderr}")))
     }
 
     fn modify<S: crate::system::System>(
@@ -79,8 +102,10 @@ impl Requirement for AptInstall {
         let result = system
             .execute_command("apt-get", &["remove", "-y", "-q", &self.name])
             .map_err(InstallError::FailedToStart)?;
-        
-        result.successful().map_err(|(stdout, stderr)| InstallError::Unsuccessful(format!("{stdout}\n{stderr}")))
+
+        result
+            .successful()
+            .map_err(|(stdout, stderr)| InstallError::Unsuccessful(format!("{stdout}\n{stderr}")))
     }
 
     fn has_been_created<S: crate::system::System>(
