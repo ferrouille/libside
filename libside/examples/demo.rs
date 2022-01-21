@@ -87,7 +87,6 @@ struct DemoData {
     fpm_socks_group: Group,
     nginx_user: (User, Group),
     nginx: Nginx,
-    nginx_service: SystemdService,
     nginx_sites: Path<SharedConfig>,
     nginx_config_dir: Path<SharedConfig>,
     php_fpm: Option<PhpFpm<Php80>>,
@@ -98,7 +97,6 @@ struct DemoData {
 
 struct MySqlData {
     mysql: MariaDb,
-    service: MySqlService,
 }
 
 struct BackupData {
@@ -121,9 +119,8 @@ impl MySqlData {
         R: Supports<AptInstall> + Supports<ServiceRunning>,
     {
         let mysql = MariaDb::install(context);
-        let service = mysql.default_service();
 
-        MySqlData { mysql, service }
+        MySqlData { mysql }
     }
 }
 
@@ -182,7 +179,6 @@ impl Builder for Demo {
         let nginx = Nginx::install(context);
         Ok(DemoData {
             fpm_socks_group,
-            nginx_service: nginx.default_service(),
             nginx,
             nginx_user,
             nginx_sites,
@@ -283,7 +279,7 @@ impl Builder for Demo {
                         let mounted_unix_socket = sb.convert_path_into(&php_root.join("mysql"));
 
                         let mysql = &mut data.mysql.as_mut().unwrap();
-                        let running = mysql.service.run(context);
+                        let running = mysql.mysql.default_service().run(context);
                         let db = running.create_database(context, &db_config.name);
                         let password: Password<32, Alphanumeric> = context.secret("mysql_password");
                         let user = running.create_user(context, &db_config.user, password.as_ref());
@@ -381,7 +377,7 @@ impl Builder for Demo {
                         fpm_socket: &listen_sock,
                     ).rename(package.name()));
 
-                    data.nginx_service
+                    data.nginx.default_service()
                         .add_start_dependencies(site_file.graph_node());
                     data.sites
                         .push((document_root, Some((listen_sock, started))));
@@ -395,7 +391,7 @@ impl Builder for Demo {
                         .rename(package.name()),
                     );
 
-                    data.nginx_service
+                    data.nginx.default_service()
                         .add_start_dependencies(site_file.graph_node());
                     data.sites.push((document_root, None));
                 }
@@ -466,8 +462,7 @@ impl Builder for Demo {
         context: &mut libside::builder::Context<Self::Requirement>,
         mut data: Self::Data,
     ) -> Result<(), Self::BuildError> {
-        let nginx = data.nginx;
-        let mut nginx_service = data.nginx_service;
+        let mut nginx = data.nginx;
         let nginx_conf_file = data.nginx_config_dir.make_file(
             context,
             config_file!("demo-data/nginx/nginx.conf"
@@ -516,6 +511,8 @@ impl Builder for Demo {
             .temporary_file_system_push("/var/lib/nginx/uwsgi")
             .temporary_file_system_push("/var/lib/nginx/scgi");
 
+        let nginx_binary = nginx.binary();
+        let nginx_service = nginx.default_service();
         nginx_service.service_override(context, "99-overrides", ServiceData {
             unit: Unit::new(),
             install: Install::new(),
@@ -534,12 +531,12 @@ impl Builder for Demo {
                 .device_allow_push("")
                 .device_policy(DevicePolicy::Strict),
         });
-        nginx_service.add_start_dependencies(nginx.binary().graph_node());
+        nginx_service.add_start_dependencies(nginx_binary.graph_node());
         nginx_service.add_start_dependencies(nginx_conf_file.graph_node());
         nginx_service.add_start_dependencies(fastcgi_params.graph_node());
         nginx_service.add_start_dependencies(deps);
 
-        ServiceRunning::restart(context, &nginx_service);
+        ServiceRunning::restart(context, nginx_service);
 
         if let Some(backup) = data.backup {
             let mysql_group = data.mysql.as_ref().map(|m| m.mysql.mysql_group());
@@ -553,7 +550,7 @@ impl Builder for Demo {
 
             let mut script = String::new();
             if let Some(mysql) = &mut data.mysql {
-                let running = mysql.service.run(context);
+                let running = mysql.mysql.default_service().run(context);
                 let pass = context.secret::<Password<32, Alphanumeric>>("backup_mysql_password");
                 let mysql_user = running.create_user(context, "backup", pass.as_ref());
                 for (db, _) in backup.databases.iter() {

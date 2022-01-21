@@ -8,17 +8,23 @@ use super::{
     {apt::AptPackage, systemd::SystemdService},
 };
 
-pub struct Nginx(GraphNodeReference);
+pub struct Nginx {
+    service: SystemdService,
+    node: GraphNodeReference,
+}
 
 impl AptPackage for Nginx {
     const NAME: &'static str = "nginx";
 
     fn create(node: GraphNodeReference) -> Self {
-        Nginx(node)
+        Nginx {
+            service: SystemdService::from_name_unchecked("nginx", node, vec![node]),
+            node,
+        }
     }
 
     fn graph_node(&self) -> GraphNodeReference {
-        self.0
+        self.node
     }
 }
 
@@ -32,8 +38,8 @@ impl Nginx {
         }
     }
 
-    pub fn default_service(&self) -> SystemdService {
-        SystemdService::from_name_unchecked("nginx", self.graph_node(), vec![self.graph_node()])
+    pub fn default_service(&mut self) -> &mut SystemdService {
+        &mut self.service
     }
 
     pub fn www_data_user(&self) -> User {

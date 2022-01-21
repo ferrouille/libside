@@ -39,17 +39,29 @@ pub struct MySqlService {
     service: SystemdService,
 }
 
-pub struct MariaDb(GraphNodeReference);
+pub struct MariaDb {
+    service: MySqlService,
+    node: GraphNodeReference,
+}
 
 impl AptPackage for MariaDb {
     const NAME: &'static str = "mariadb-server";
 
     fn create(node: GraphNodeReference) -> Self {
-        MariaDb(node)
+        MariaDb {
+            service: MySqlService {
+                service: SystemdService::from_name_unchecked(
+                    "mariadb",
+                    node,
+                    vec![node],
+                ),
+            },
+            node,
+        }
     }
 
     fn graph_node(&self) -> GraphNodeReference {
-        self.0
+        self.node
     }
 }
 
@@ -63,14 +75,8 @@ impl MariaDb {
         }
     }
 
-    pub fn default_service(&self) -> MySqlService {
-        MySqlService {
-            service: SystemdService::from_name_unchecked(
-                "mariadb",
-                self.graph_node(),
-                vec![self.graph_node()],
-            ),
-        }
+    pub fn default_service(&mut self) -> &mut MySqlService {
+        &mut self.service
     }
 
     pub fn mysql_user(&self) -> User {
