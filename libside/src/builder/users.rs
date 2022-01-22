@@ -92,7 +92,7 @@ impl User {
             CreateUser {
                 uid: Some(uid),
                 name: name.to_string(),
-                group: group.name.to_string(),
+                group: Some(group.name.to_string()),
                 system: info.system,
                 supplementary_groups: info
                     .supplementary_groups
@@ -262,7 +262,8 @@ pub struct CreateUser {
     #[serde(default)]
     pub(crate) uid: Option<u32>,
     pub(crate) name: String,
-    pub(crate) group: String,
+    #[serde(default)]
+    pub(crate) group: Option<String>,
     pub(crate) system: bool,
     pub(crate) supplementary_groups: Vec<String>,
     pub(crate) shell: String,
@@ -327,8 +328,10 @@ impl Requirement for CreateUser {
             args.push(&uidstr);
         }
 
-        args.push("--gid");
-        args.push(&self.group);
+        if let Some(group) = &self.group {
+            args.push("--gid");
+            args.push(&group);
+        }
 
         args.push(&self.name);
 
