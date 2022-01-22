@@ -100,10 +100,9 @@ impl<R: Requirement, State: Default + Copy> Graph<R, State> {
 
         while let Some(node) = scanlist.pop() {
             for index in node.preconditions.iter().copied() {
-                if map[index].is_none() {
-                    scanlist.push(&self.nodes[index]);
-                } else {
-                    result.push(index);
+                match map[index] {
+                    None => scanlist.push(&self.nodes[index]),
+                    Some(new_index) => result.push(new_index),
                 }
             }
         }
@@ -187,6 +186,7 @@ impl<R: Requirement, State: Default + Copy> Graph<R, State> {
         }
 
         undo.retain(|index, _| nodes_to_undo[index]);
+        println!("Undo graph: {:?}", undo);
         Ok(undo)
     }
 
@@ -554,15 +554,20 @@ mod tests {
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     struct Foo {
         id: u64,
+        can_undo: bool,
     }
 
     impl Foo {
-        const ROOT: Foo = Foo { id: 0 };
-        const A: Foo = Foo { id: 1 };
-        const B: Foo = Foo { id: 2 };
-        const C: Foo = Foo { id: 3 };
-        const D: Foo = Foo { id: 4 };
-        const END: Foo = Foo { id: 100 };
+        const ROOT: Foo = Foo { id: 0, can_undo: true };
+        const ROOT_NOUNDO: Foo = Foo { id: 0, can_undo: false };
+        const A: Foo = Foo { id: 1, can_undo: true };
+        const A_NOUNDO: Foo = Foo { id: 1, can_undo: false };
+        const B: Foo = Foo { id: 2, can_undo: true };
+        const B_NOUNDO: Foo = Foo { id: 2, can_undo: false };
+        const C: Foo = Foo { id: 3, can_undo: true };
+        const C_NOUNDO: Foo = Foo { id: 3, can_undo: false };
+        const D: Foo = Foo { id: 4, can_undo: true };
+        const END: Foo = Foo { id: 100, can_undo: true };
     }
 
     #[derive(Debug, thiserror::Error)]
@@ -603,7 +608,7 @@ mod tests {
         }
 
         fn can_undo(&self) -> bool {
-            true
+            self.can_undo
         }
 
         fn may_pre_exist(&self) -> bool {
@@ -795,14 +800,14 @@ mod tests {
                 Do {
                     created_by_us: false,
                     should_exist: false,
-                    source: GraphNodeReference(1),
-                    requirement: &Foo::A,
+                    source: GraphNodeReference(2),
+                    requirement: &Foo::B,
                 },
                 Do {
                     created_by_us: false,
                     should_exist: false,
-                    source: GraphNodeReference(2),
-                    requirement: &Foo::B,
+                    source: GraphNodeReference(1),
+                    requirement: &Foo::A,
                 },
                 Do {
                     created_by_us: false,
@@ -818,6 +823,89 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    pub fn trivial_sequence_backwards() {
+        let mut prev = Graph::<Foo, Pending>::new();
+        let root = prev.add(Foo::ROOT, &[]);
+        let a = prev.add(Foo::A_NOUNDO, &[root]);
+        let b = prev.add(Foo::B_NOUNDO, &[root]);
+        let c = prev.add(Foo::C, &[a, root]);
+        let _end = prev.add(Foo::END, &[b, c]);
+        let prev = Graph {
+            nodes: prev.nodes,
+            state: Applied,
+        };
+
+        let next = Graph::<Foo, Pending>::new();
+
+        println!("prev       : {:?}", prev);
+        println!("next       : {:?}", next);
+
+        let mut sys = FakeSystem {
+            created: Vec::new(),
+        };
+
+        let cmp = next.compare_with(&mut sys, &prev).unwrap();
+        let seq = cmp.generate_application_sequence(&mut sys).unwrap();
+
+        assert_eq!(seq.undo, vec![
+            Undo {
+                pre_existing: false,
+                requirement: &Foo::END,
+            },
+            Undo {
+                pre_existing: false,
+                requirement: &Foo::C,
+            },
+            Undo {
+                pre_existing: false,
+                requirement: &Foo::ROOT,
+            },
+        ]);
+
+        assert_eq!(seq.todo, vec![]);
+    }
+
+    #[test]
+    pub fn inherited_preconditions() {
+        let mut prev = Graph::<Foo, Pending>::new();
+        let root = prev.add(Foo::ROOT_NOUNDO, &[]);
+        let a = prev.add(Foo::A_NOUNDO, &[root]);
+        let b = prev.add(Foo::B, &[a, root]);
+        let c = prev.add(Foo::C_NOUNDO, &[b]);
+        let _end = prev.add(Foo::END, &[b, c]);
+        let prev = prev.invert();
+        let prev = Graph {
+            nodes: prev.nodes,
+            state: Applied,
+        };
+
+        let next = Graph::<Foo, Pending>::new();
+
+        println!("prev       : {:?}", prev);
+        println!("next       : {:?}", next);
+
+        let mut sys = FakeSystem {
+            created: Vec::new(),
+        };
+
+        let cmp = next.compare_with(&mut sys, &prev).unwrap();
+        let seq = cmp.generate_application_sequence(&mut sys).unwrap();
+
+        assert_eq!(seq.undo, vec![
+            Undo {
+                pre_existing: false,
+                requirement: &Foo::B,
+            },
+            Undo {
+                pre_existing: false,
+                requirement: &Foo::END,
+            },
+        ]);
+
+        assert_eq!(seq.todo, vec![]);
     }
 
     #[test]
@@ -866,16 +954,16 @@ mod tests {
                     requirement: &Foo::ROOT,
                 },
                 Do {
-                    created_by_us: true,
-                    should_exist: true,
-                    source: GraphNodeReference(1),
-                    requirement: &Foo::A,
-                },
-                Do {
                     created_by_us: false,
                     should_exist: false,
                     source: GraphNodeReference(2),
                     requirement: &Foo::B,
+                },
+                Do {
+                    created_by_us: true,
+                    should_exist: true,
+                    source: GraphNodeReference(1),
+                    requirement: &Foo::A,
                 },
                 Do {
                     created_by_us: true,
@@ -886,7 +974,7 @@ mod tests {
                 Do {
                     created_by_us: false,
                     should_exist: false,
-                    source: GraphNodeReference(5),
+                    source: GraphNodeReference(4),
                     requirement: &Foo::END,
                 },
             ]
