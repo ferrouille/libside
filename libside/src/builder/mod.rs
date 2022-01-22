@@ -151,7 +151,7 @@ pub struct Context<'a, R> {
     backup_path: Option<Path<Backup>>,
     deleted_path: PathBuf,
 
-    state: TypeMap,
+    state: &'a mut TypeMap,
 }
 
 pub struct MinimalContext {
@@ -167,6 +167,7 @@ impl<'a, R: Requirement> Context<'a, R> {
         install: &'a StateDirs,
         secrets: &'a mut Secrets,
         graph: &'a mut Graph<R, Pending>,
+        state: &'a mut TypeMap,
     ) -> Self {
         let p = Context {
             info,
@@ -190,7 +191,7 @@ impl<'a, R: Requirement> Context<'a, R> {
             userdata_path: None,
             backup_path: None,
             deleted_path: dirs.deleted.clone(),
-            state: TypeMap::new(),
+            state,
         };
 
         p
@@ -445,7 +446,7 @@ impl<'a, R: Requirement> Context<'a, R> {
             .unwrap()
     }
 
-    pub fn state<T: Key + Default>(&mut self) -> &mut T {
+    pub fn state<T: Default + 'static>(&mut self) -> &mut T {
         self.state
             .entry::<SimpleKv<T>>()
             .or_insert_with(Default::default)
@@ -539,14 +540,30 @@ where
         files: Vec::new(),
     };
 
+    let mut state = TypeMap::new();
+
     println!("Preparing global..");
-    let mut context = Context::new(&start, &dirs, &install, &mut secrets, &mut graph);
+    let mut context = Context::new(
+        &start,
+        &dirs,
+        &install,
+        &mut secrets,
+        &mut graph,
+        &mut state,
+    );
     let mut data = builder.start_build(&mut context)?;
     contexts.push(context.into_minimal());
 
     for package in packages.iter() {
         println!("Preparing package {}..", package.info.name);
-        let mut context = Context::new(&package.info, &dirs, &install, &mut secrets, &mut graph);
+        let mut context = Context::new(
+            &package.info,
+            &dirs,
+            &install,
+            &mut secrets,
+            &mut graph,
+            &mut state,
+        );
         builder.build_package(&package, &mut context, &mut data)?;
 
         contexts.push(context.into_minimal());
@@ -557,7 +574,14 @@ where
         path: PathBuf::new(),
         files: Vec::new(),
     };
-    let mut context = Context::new(&finish, &dirs, &install, &mut secrets, &mut graph);
+    let mut context = Context::new(
+        &finish,
+        &dirs,
+        &install,
+        &mut secrets,
+        &mut graph,
+        &mut state,
+    );
     builder.finish_build(&mut context, data)?;
     contexts.push(context.into_minimal());
 

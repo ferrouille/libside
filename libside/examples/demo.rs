@@ -550,6 +550,12 @@ impl Builder for Demo {
                 c
             });
 
+            println!(
+                "The uid/gid of backup-service will be {}:{}",
+                backup_user.id(),
+                backup_group.id()
+            );
+
             let mut script = String::new();
             if let Some(mysql) = &mut data.mysql {
                 let running = mysql.mysql.default_service().run(context);

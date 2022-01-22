@@ -77,6 +77,7 @@ impl MariaDb {
 
     pub fn mysql_user(&self) -> User {
         User {
+            uid: None,
             name: "mysql".to_owned(),
             node: self.graph_node(),
         }
@@ -84,6 +85,7 @@ impl MariaDb {
 
     pub fn mysql_group(&self) -> Group {
         Group {
+            gid: None,
             name: "mysql".to_owned(),
             node: self.graph_node(),
         }

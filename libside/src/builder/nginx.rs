@@ -44,6 +44,7 @@ impl Nginx {
 
     pub fn www_data_user(&self) -> User {
         User {
+            uid: None,
             name: "www-data".to_owned(),
             node: self.graph_node(),
         }
@@ -51,6 +52,7 @@ impl Nginx {
 
     pub fn www_data_group(&self) -> Group {
         Group {
+            gid: None,
             name: "www-data".to_owned(),
             node: self.graph_node(),
         }

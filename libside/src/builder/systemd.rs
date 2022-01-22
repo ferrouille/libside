@@ -128,9 +128,7 @@ impl SystemdService {
         R: Supports<FileWithContents> + Supports<InstallServices> + Supports<EnableService>,
     {
         let disabled_service = EnableService::disable(context, &self);
-        let mut timer = data.install(context, &self.name, disabled_service);
-        let enabled = EnableService::enable(context, &timer);
-        timer.start_dependencies.push(enabled);
+        let timer = data.install(context, &self.name, disabled_service);
 
         timer
     }
@@ -343,8 +341,9 @@ impl TimerData {
             .chain(std::iter::once(disabled_service))
             .collect();
 
-        let timer = SystemdTimer::new(&full_name, created_file.graph_node().unwrap(), deps);
-        EnableService::enable(context, &timer);
+        let mut timer = SystemdTimer::new(&full_name, created_file.graph_node().unwrap(), deps);
+        let node = EnableService::enable(context, &timer);
+        timer.start_dependencies.push(node);
 
         timer
     }
