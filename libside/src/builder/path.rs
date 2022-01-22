@@ -193,7 +193,7 @@ impl<L: Clone> Path<L> {
     ) -> GraphNodeReference {
         context.add_node(
             Chown::new(self.full_path(), user.as_param(), group.as_param()),
-            self.node.iter(),
+            self.node.iter().chain(&[ user.graph_node(), group.graph_node() ]),
         )
     }
 
