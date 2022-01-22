@@ -558,16 +558,46 @@ mod tests {
     }
 
     impl Foo {
-        const ROOT: Foo = Foo { id: 0, can_undo: true };
-        const ROOT_NOUNDO: Foo = Foo { id: 0, can_undo: false };
-        const A: Foo = Foo { id: 1, can_undo: true };
-        const A_NOUNDO: Foo = Foo { id: 1, can_undo: false };
-        const B: Foo = Foo { id: 2, can_undo: true };
-        const B_NOUNDO: Foo = Foo { id: 2, can_undo: false };
-        const C: Foo = Foo { id: 3, can_undo: true };
-        const C_NOUNDO: Foo = Foo { id: 3, can_undo: false };
-        const D: Foo = Foo { id: 4, can_undo: true };
-        const END: Foo = Foo { id: 100, can_undo: true };
+        const ROOT: Foo = Foo {
+            id: 0,
+            can_undo: true,
+        };
+        const ROOT_NOUNDO: Foo = Foo {
+            id: 0,
+            can_undo: false,
+        };
+        const A: Foo = Foo {
+            id: 1,
+            can_undo: true,
+        };
+        const A_NOUNDO: Foo = Foo {
+            id: 1,
+            can_undo: false,
+        };
+        const B: Foo = Foo {
+            id: 2,
+            can_undo: true,
+        };
+        const B_NOUNDO: Foo = Foo {
+            id: 2,
+            can_undo: false,
+        };
+        const C: Foo = Foo {
+            id: 3,
+            can_undo: true,
+        };
+        const C_NOUNDO: Foo = Foo {
+            id: 3,
+            can_undo: false,
+        };
+        const D: Foo = Foo {
+            id: 4,
+            can_undo: true,
+        };
+        const END: Foo = Foo {
+            id: 100,
+            can_undo: true,
+        };
     }
 
     #[derive(Debug, thiserror::Error)]
@@ -850,20 +880,23 @@ mod tests {
         let cmp = next.compare_with(&mut sys, &prev).unwrap();
         let seq = cmp.generate_application_sequence(&mut sys).unwrap();
 
-        assert_eq!(seq.undo, vec![
-            Undo {
-                pre_existing: false,
-                requirement: &Foo::END,
-            },
-            Undo {
-                pre_existing: false,
-                requirement: &Foo::C,
-            },
-            Undo {
-                pre_existing: false,
-                requirement: &Foo::ROOT,
-            },
-        ]);
+        assert_eq!(
+            seq.undo,
+            vec![
+                Undo {
+                    pre_existing: false,
+                    requirement: &Foo::END,
+                },
+                Undo {
+                    pre_existing: false,
+                    requirement: &Foo::C,
+                },
+                Undo {
+                    pre_existing: false,
+                    requirement: &Foo::ROOT,
+                },
+            ]
+        );
 
         assert_eq!(seq.todo, vec![]);
     }
@@ -894,16 +927,19 @@ mod tests {
         let cmp = next.compare_with(&mut sys, &prev).unwrap();
         let seq = cmp.generate_application_sequence(&mut sys).unwrap();
 
-        assert_eq!(seq.undo, vec![
-            Undo {
-                pre_existing: false,
-                requirement: &Foo::B,
-            },
-            Undo {
-                pre_existing: false,
-                requirement: &Foo::END,
-            },
-        ]);
+        assert_eq!(
+            seq.undo,
+            vec![
+                Undo {
+                    pre_existing: false,
+                    requirement: &Foo::B,
+                },
+                Undo {
+                    pre_existing: false,
+                    requirement: &Foo::END,
+                },
+            ]
+        );
 
         assert_eq!(seq.todo, vec![]);
     }
