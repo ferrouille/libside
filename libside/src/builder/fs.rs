@@ -342,15 +342,37 @@ impl Delete {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum DeleteError<S: System> {
+    #[error("backup before delete failed: {0}")]
+    BackupFailed(S::Error),
+
+    #[error("deleting the file failed: {0}")]
+    RemoveFailed(S::Error),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum UndoDeleteError<S: System> {
+    #[error("restoring the file failed: {0}")]
+    RestoreFailed(S::Error),
+
+    #[error("failed to delete the backup copy: {0}")]
+    RemoveFailed(S::Error),
+}
+
 impl Requirement for Delete {
-    type CreateError<S: System> = NeverError;
+    type CreateError<S: System> = DeleteError<S>;
     type ModifyError<S: System> = NeverError;
-    type DeleteError<S: System> = NeverError;
-    type HasBeenCreatedError<S: System> = NeverError;
+    type DeleteError<S: System> = UndoDeleteError<S>;
+    type HasBeenCreatedError<S: System> = S::Error;
 
     fn create<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::CreateError<S>> {
-        system.copy_file(&self.path, &self.copy_to).unwrap();
-        system.remove_file(&self.path).unwrap();
+        system
+            .copy_file(&self.path, &self.copy_to)
+            .map_err(DeleteError::BackupFailed)?;
+        system
+            .remove_file(&self.path)
+            .map_err(DeleteError::RemoveFailed)?;
 
         Ok(())
     }
@@ -363,8 +385,13 @@ impl Requirement for Delete {
     }
 
     fn delete<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::DeleteError<S>> {
-        system.copy_file(&self.copy_to, &self.path).unwrap();
-        system.remove_file(&self.copy_to).unwrap();
+        system
+            .copy_file(&self.copy_to, &self.path)
+            .map_err(UndoDeleteError::RestoreFailed)?;
+        system
+            .remove_file(&self.copy_to)
+            .map_err(UndoDeleteError::RemoveFailed)?;
+
         Ok(())
     }
 
@@ -372,7 +399,7 @@ impl Requirement for Delete {
         &self,
         system: &mut S,
     ) -> Result<bool, Self::HasBeenCreatedError<S>> {
-        Ok(!system.path_exists(&self.path).unwrap())
+        Ok(!system.path_exists(&self.path)?)
     }
 
     fn affects(&self, other: &Self) -> bool {
@@ -419,9 +446,24 @@ impl Chown {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum ChownError<S: System> {
+    #[error("unable to execute chown: {0}")]
+    FailedToStart(S::CommandError),
+
+    #[error("chown failed: {0} {1}")]
+    Unsuccessful(String, String),
+}
+
+impl<S: System> From<(&str, &str)> for ChownError<S> {
+    fn from(output: (&str, &str)) -> Self {
+        ChownError::Unsuccessful(output.0.to_string(), output.1.to_string())
+    }
+}
+
 impl Requirement for Chown {
-    type CreateError<S: System> = NeverError;
-    type ModifyError<S: System> = NeverError;
+    type CreateError<S: System> = ChownError<S>;
+    type ModifyError<S: System> = ChownError<S>;
     type DeleteError<S: System> = NeverError;
     type HasBeenCreatedError<S: System> = NeverError;
 
@@ -434,7 +476,8 @@ impl Requirement for Chown {
                     self.path.as_os_str().to_str().unwrap(),
                 ],
             )
-            .unwrap();
+            .map_err(ChownError::FailedToStart)?
+            .successful()?;
 
         Ok(())
     }
@@ -454,6 +497,7 @@ impl Requirement for Chown {
         &self,
         _system: &mut S,
     ) -> Result<bool, Self::HasBeenCreatedError<S>> {
+        // TODO
         Ok(true)
     }
 
@@ -472,6 +516,7 @@ impl Requirement for Chown {
     }
 
     fn verify<S: System>(&self, _system: &mut S) -> Result<bool, ()> {
+        // TODO
         Ok(true)
     }
 
@@ -497,13 +542,13 @@ impl Chmod {
 }
 
 impl Requirement for Chmod {
-    type CreateError<S: System> = NeverError;
-    type ModifyError<S: System> = NeverError;
+    type CreateError<S: System> = S::Error;
+    type ModifyError<S: System> = S::Error;
     type DeleteError<S: System> = NeverError;
     type HasBeenCreatedError<S: System> = NeverError;
 
     fn create<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::CreateError<S>> {
-        system.chmod(&self.path, self.permissions).unwrap();
+        system.chmod(&self.path, self.permissions)?;
 
         Ok(())
     }
@@ -523,6 +568,7 @@ impl Requirement for Chmod {
         &self,
         _system: &mut S,
     ) -> Result<bool, Self::HasBeenCreatedError<S>> {
+        // TODO
         Ok(true)
     }
 
@@ -541,6 +587,7 @@ impl Requirement for Chmod {
     }
 
     fn verify<S: System>(&self, _system: &mut S) -> Result<bool, ()> {
+        // TODO
         Ok(true)
     }
 

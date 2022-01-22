@@ -223,18 +223,37 @@ impl CreateMySqlDatabase {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum MySqlError<S: System> {
+    #[error("unable to execute mysql: {0}")]
+    FailedToStart(S::CommandError),
+
+    #[error("mysql query '{query}' failed: {stdout}{stderr}")]
+    Unsuccessful {
+        query: String,
+        stdout: String,
+        stderr: String,
+    },
+}
+
 impl Requirement for CreateMySqlDatabase {
-    type CreateError<S: System> = NeverError;
+    type CreateError<S: System> = MySqlError<S>;
     type ModifyError<S: System> = NeverError;
     type DeleteError<S: System> = NeverError;
-    type HasBeenCreatedError<S: System> = NeverError;
+    type HasBeenCreatedError<S: System> = MySqlError<S>;
 
     fn create<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::CreateError<S>> {
         let query = format!("CREATE DATABASE `{}`;", self.name);
         let result = system
             .execute_command_with_input("mysql", &[], query.as_bytes())
-            .unwrap();
-        assert!(result.is_success()); // TODO
+            .map_err(MySqlError::FailedToStart)?;
+        result
+            .successful()
+            .map_err(|(stdout, stderr)| MySqlError::Unsuccessful {
+                query,
+                stdout: stdout.to_string(),
+                stderr: stderr.to_string(),
+            })?;
 
         Ok(())
     }
@@ -260,8 +279,14 @@ impl Requirement for CreateMySqlDatabase {
         let query = format!("SHOW DATABASES LIKE '{}';", self.name);
         let result = system
             .execute_command_with_input("mysql", &["--column-names=false"], query.as_bytes())
-            .unwrap();
-        assert!(result.is_success()); // TODO
+            .map_err(MySqlError::FailedToStart)?;
+        result
+            .successful()
+            .map_err(|(stdout, stderr)| MySqlError::Unsuccessful {
+                query,
+                stdout: stdout.to_string(),
+                stderr: stderr.to_string(),
+            })?;
 
         return Ok(result.stdout_as_str().trim() == self.name);
     }
@@ -309,10 +334,10 @@ impl CreateMySqlUser {
 }
 
 impl Requirement for CreateMySqlUser {
-    type CreateError<S: System> = NeverError;
-    type ModifyError<S: System> = NeverError;
-    type DeleteError<S: System> = NeverError;
-    type HasBeenCreatedError<S: System> = NeverError;
+    type CreateError<S: System> = MySqlError<S>;
+    type ModifyError<S: System> = MySqlError<S>;
+    type DeleteError<S: System> = MySqlError<S>;
+    type HasBeenCreatedError<S: System> = MySqlError<S>;
 
     fn create<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::CreateError<S>> {
         // TODO: Escape username & password
@@ -322,8 +347,14 @@ impl Requirement for CreateMySqlUser {
         );
         let result = system
             .execute_command_with_input("mysql", &[], query.as_bytes())
-            .unwrap();
-        assert!(result.is_success()); // TODO
+            .map_err(MySqlError::FailedToStart)?;
+        result
+            .successful()
+            .map_err(|(stdout, stderr)| MySqlError::Unsuccessful {
+                query,
+                stdout: stdout.to_string(),
+                stderr: stderr.to_string(),
+            })?;
 
         Ok(())
     }
@@ -336,8 +367,14 @@ impl Requirement for CreateMySqlUser {
         );
         let result = system
             .execute_command_with_input("mysql", &[], query.as_bytes())
-            .unwrap();
-        assert!(result.is_success()); // TODO
+            .map_err(MySqlError::FailedToStart)?;
+        result
+            .successful()
+            .map_err(|(stdout, stderr)| MySqlError::Unsuccessful {
+                query,
+                stdout: stdout.to_string(),
+                stderr: stderr.to_string(),
+            })?;
 
         Ok(())
     }
@@ -346,8 +383,14 @@ impl Requirement for CreateMySqlUser {
         let query = format!("DROP USER '{}'@'localhost'; FLUSH PRIVILEGES;", self.name);
         let result = system
             .execute_command_with_input("mysql", &[], query.as_bytes())
-            .unwrap();
-        assert!(result.is_success()); // TODO
+            .map_err(MySqlError::FailedToStart)?;
+        result
+            .successful()
+            .map_err(|(stdout, stderr)| MySqlError::Unsuccessful {
+                query,
+                stdout: stdout.to_string(),
+                stderr: stderr.to_string(),
+            })?;
 
         Ok(())
     }
@@ -362,8 +405,14 @@ impl Requirement for CreateMySqlUser {
         );
         let result = system
             .execute_command_with_input("mysql", &["--column-names=false"], query.as_bytes())
-            .unwrap();
-        assert!(result.is_success()); // TODO
+            .map_err(MySqlError::FailedToStart)?;
+        result
+            .successful()
+            .map_err(|(stdout, stderr)| MySqlError::Unsuccessful {
+                query,
+                stdout: stdout.to_string(),
+                stderr: stderr.to_string(),
+            })?;
 
         return Ok(result.stdout_as_str().trim() == self.name);
     }
@@ -413,10 +462,10 @@ impl CreateMySqlGrant {
 }
 
 impl Requirement for CreateMySqlGrant {
-    type CreateError<S: System> = NeverError;
-    type ModifyError<S: System> = NeverError;
-    type DeleteError<S: System> = NeverError;
-    type HasBeenCreatedError<S: System> = NeverError;
+    type CreateError<S: System> = MySqlError<S>;
+    type ModifyError<S: System> = MySqlError<S>;
+    type DeleteError<S: System> = MySqlError<S>;
+    type HasBeenCreatedError<S: System> = MySqlError<S>;
 
     fn create<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::CreateError<S>> {
         let query = format!(
@@ -427,8 +476,14 @@ impl Requirement for CreateMySqlGrant {
         );
         let result = system
             .execute_command_with_input("mysql", &[], query.as_bytes())
-            .unwrap();
-        assert!(result.is_success()); // TODO
+            .map_err(MySqlError::FailedToStart)?;
+        result
+            .successful()
+            .map_err(|(stdout, stderr)| MySqlError::Unsuccessful {
+                query,
+                stdout: stdout.to_string(),
+                stderr: stderr.to_string(),
+            })?;
 
         Ok(())
     }
@@ -437,8 +492,14 @@ impl Requirement for CreateMySqlGrant {
         let query = format!("REVOKE ALL PRIVILEGES ON `{db}`.* FROM '{u}'@'localhost'; GRANT {p} ON `{db}`.* TO '{u}'@'localhost'; FLUSH PRIVILEGES; FLUSH PRIVILEGES;", p = self.privileges, db = self.database, u = self.user);
         let result = system
             .execute_command_with_input("mysql", &[], query.as_bytes())
-            .unwrap();
-        assert!(result.is_success()); // TODO
+            .map_err(MySqlError::FailedToStart)?;
+        result
+            .successful()
+            .map_err(|(stdout, stderr)| MySqlError::Unsuccessful {
+                query,
+                stdout: stdout.to_string(),
+                stderr: stderr.to_string(),
+            })?;
 
         Ok(())
     }
@@ -451,8 +512,14 @@ impl Requirement for CreateMySqlGrant {
         );
         let result = system
             .execute_command_with_input("mysql", &[], query.as_bytes())
-            .unwrap();
-        assert!(result.is_success()); // TODO
+            .map_err(MySqlError::FailedToStart)?;
+        result
+            .successful()
+            .map_err(|(stdout, stderr)| MySqlError::Unsuccessful {
+                query,
+                stdout: stdout.to_string(),
+                stderr: stderr.to_string(),
+            })?;
 
         Ok(())
     }

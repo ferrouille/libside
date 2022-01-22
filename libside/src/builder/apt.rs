@@ -58,8 +58,14 @@ pub enum InstallError<S: System> {
     #[error("unable to execute apt-get: {0}")]
     FailedToStart(S::CommandError),
 
-    #[error("apt-get failed: {0}")]
-    Unsuccessful(String),
+    #[error("apt-get failed: {0} {1}")]
+    Unsuccessful(String, String),
+}
+
+impl<S: System> From<(&str, &str)> for InstallError<S> {
+    fn from(output: (&str, &str)) -> Self {
+        InstallError::Unsuccessful(output.0.to_string(), output.1.to_string())
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -85,10 +91,9 @@ impl Requirement for AptInstall {
                 ],
             )
             .map_err(InstallError::FailedToStart)?;
+        result.successful()?;
 
-        result
-            .successful()
-            .map_err(|(stdout, stderr)| InstallError::Unsuccessful(format!("{stdout}\n{stderr}")))
+        Ok(())
     }
 
     fn modify<S: crate::system::System>(
@@ -102,10 +107,9 @@ impl Requirement for AptInstall {
         let result = system
             .execute_command("apt-get", &["remove", "-y", "-q", &self.name])
             .map_err(InstallError::FailedToStart)?;
+        result.successful()?;
 
-        result
-            .successful()
-            .map_err(|(stdout, stderr)| InstallError::Unsuccessful(format!("{stdout}\n{stderr}")))
+        Ok(())
     }
 
     fn has_been_created<S: crate::system::System>(

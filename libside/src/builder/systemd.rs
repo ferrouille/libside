@@ -373,12 +373,18 @@ pub enum SystemdError<S: System> {
     #[error("unable to execute systemctl: {0}")]
     FailedToStart(S::CommandError),
 
-    #[error("systemctl failed: {0}")]
-    Unsuccessful(String),
+    #[error("systemctl failed: {0} {1}")]
+    Unsuccessful(String, String),
+}
+
+impl<S: System> From<(&str, &str)> for SystemdError<S> {
+    fn from(output: (&str, &str)) -> Self {
+        SystemdError::Unsuccessful(output.0.to_string(), output.1.to_string())
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
-#[error("unable to execute apt-get: {0}")]
+#[error("unable to execute systemctl: {0}")]
 pub struct CheckError<S: System>(S::CommandError);
 
 impl Requirement for ServiceRunning {
@@ -391,30 +397,27 @@ impl Requirement for ServiceRunning {
         let result = system
             .execute_command("systemctl", &["start", &self.name])
             .map_err(SystemdError::FailedToStart)?;
+        result.successful()?;
 
-        result
-            .successful()
-            .map_err(|(stdout, stderr)| SystemdError::Unsuccessful(format!("{stdout}\n{stderr}")))
+        Ok(())
     }
 
     fn modify<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::ModifyError<S>> {
         let result = system
             .execute_command("systemctl", &["restart", &self.name])
             .map_err(SystemdError::FailedToStart)?;
+        result.successful()?;
 
-        result
-            .successful()
-            .map_err(|(stdout, stderr)| SystemdError::Unsuccessful(format!("{stdout}\n{stderr}")))
+        Ok(())
     }
 
     fn delete<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::DeleteError<S>> {
         let result = system
             .execute_command("systemctl", &["stop", &self.name])
             .map_err(SystemdError::FailedToStart)?;
+        result.successful()?;
 
-        result
-            .successful()
-            .map_err(|(stdout, stderr)| SystemdError::Unsuccessful(format!("{stdout}\n{stderr}")))
+        Ok(())
     }
 
     fn pre_existing_delete<S: crate::system::System>(
@@ -478,10 +481,7 @@ impl InstallServices {
         let result = system
             .execute_command("systemctl", &["daemon-reload"])
             .map_err(SystemdError::FailedToStart)?;
-        // TODO: Better error
-        result.successful().map_err(|(stdout, stderr)| {
-            SystemdError::Unsuccessful(format!("{stdout}\n{stderr}"))
-        })?;
+        result.successful()?;
 
         let result = system
             .execute_command(
@@ -511,10 +511,7 @@ impl InstallServices {
                     .execute_command("systemctl", &["stop", &name])
                     .map_err(SystemdError::FailedToStart)?;
 
-                // TODO: Better error
-                result.successful().map_err(|(stdout, stderr)| {
-                    SystemdError::Unsuccessful(format!("{stdout}\n{stderr}"))
-                })?;
+                result.successful()?;
             }
         }
 
@@ -619,16 +616,16 @@ impl EnableService {
 }
 
 impl Requirement for EnableService {
-    type CreateError<S: System> = NeverError;
-    type ModifyError<S: System> = NeverError;
-    type DeleteError<S: System> = NeverError;
-    type HasBeenCreatedError<S: System> = NeverError;
+    type CreateError<S: System> = SystemdError<S>;
+    type ModifyError<S: System> = SystemdError<S>;
+    type DeleteError<S: System> = SystemdError<S>;
+    type HasBeenCreatedError<S: System> = SystemdError<S>;
 
     fn create<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::CreateError<S>> {
         let result = system
             .execute_command("systemctl", &[Self::keyword(self.disable), &self.name])
-            .unwrap();
-        assert!(result.is_success());
+            .map_err(SystemdError::FailedToStart)?;
+        result.successful()?;
 
         Ok(())
     }
@@ -636,8 +633,8 @@ impl Requirement for EnableService {
     fn modify<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::ModifyError<S>> {
         let result = system
             .execute_command("systemctl", &[Self::keyword(self.disable), &self.name])
-            .unwrap();
-        assert!(result.is_success());
+            .map_err(SystemdError::FailedToStart)?;
+        result.successful()?;
 
         Ok(())
     }
@@ -645,8 +642,8 @@ impl Requirement for EnableService {
     fn delete<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::DeleteError<S>> {
         let result = system
             .execute_command("systemctl", &[Self::keyword(!self.disable), &self.name])
-            .unwrap();
-        assert!(result.is_success());
+            .map_err(SystemdError::FailedToStart)?;
+        result.successful()?;
 
         Ok(())
     }
@@ -664,7 +661,11 @@ impl Requirement for EnableService {
     ) -> Result<bool, Self::HasBeenCreatedError<S>> {
         let result = system
             .execute_command("systemctl", &["is-enabled", &self.name])
-            .unwrap();
+            .map_err(SystemdError::FailedToStart)?;
+        if !result.is_success() {
+            return Ok(false);
+        }
+
         let s = result.stdout_as_str().trim();
 
         Ok(if self.disable {
