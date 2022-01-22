@@ -90,7 +90,7 @@ impl User {
 
         let node = context.add_node(
             CreateUser {
-                uid,
+                uid: Some(uid),
                 name: name.to_string(),
                 group: group.name.to_string(),
                 system: info.system,
@@ -213,7 +213,7 @@ impl Group {
             name: name.to_owned(),
             node: context.add_node(
                 CreateGroup {
-                    gid,
+                    gid: Some(gid),
                     name: name.to_string(),
                     system,
                 },
@@ -259,7 +259,8 @@ impl<'r> UserConfig<'r> {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CreateUser {
-    pub(crate) uid: u32,
+    #[serde(default)]
+    pub(crate) uid: Option<u32>,
     pub(crate) name: String,
     pub(crate) group: String,
     pub(crate) system: bool,
@@ -319,9 +320,12 @@ impl Requirement for CreateUser {
         args.push("--shell");
         args.push(&self.shell);
 
-        args.push("--uid");
-        let uid = self.uid.to_string();
-        args.push(&uid);
+        let uidstr: String;
+        if let Some(uid) = self.uid {
+            args.push("--uid");
+            uidstr = uid.to_string();
+            args.push(&uidstr);
+        }
 
         args.push("--gid");
         args.push(&self.group);
@@ -417,7 +421,8 @@ impl Display for CreateUser {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateGroup {
-    gid: u32,
+    #[serde(default)]
+    gid: Option<u32>,
     name: String,
     system: bool,
 }
@@ -458,9 +463,12 @@ impl Requirement for CreateGroup {
             args.push("--system");
         }
 
-        args.push("--gid");
-        let gid = self.gid.to_string();
-        args.push(&gid);
+        let gidstr: String;
+        if let Some(gid) = self.gid {
+            args.push("--gid");
+            gidstr = gid.to_string();
+            args.push(&gidstr);
+        }
 
         args.push(&self.name);
 
