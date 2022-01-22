@@ -145,6 +145,7 @@ impl<'a> RunningMySqlService<'a> {
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Privilege {
     Alter,
+    Create,
     Delete,
     Drop,
     GrantOption,
@@ -162,6 +163,7 @@ impl AsRef<str> for Privilege {
         use Privilege::*;
         match self {
             Alter => "ALTER",
+            Create => "CREATE",
             Delete => "DELETE",
             Drop => "DROP",
             GrantOption => "GRANT OPTION",
