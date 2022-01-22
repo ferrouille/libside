@@ -373,6 +373,12 @@ impl Requirement for CreateUser {
     }
 
     fn delete<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::DeleteError<S>> {
+        // Change the primary group of the user so that the actual primary group won't be deleted
+        let result = system
+            .execute_command("usermod", &["--gid", "users", &self.name])
+            .map_err(CreateUserError::FailedToStart)?;
+        result.successful()?;
+
         let result = system
             .execute_command("userdel", &[&self.name])
             .map_err(CreateUserError::FailedToStart)?;
