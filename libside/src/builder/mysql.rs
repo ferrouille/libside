@@ -95,7 +95,17 @@ impl MariaDb {
 pub struct RunningMySqlService<'a>(GraphNodeReference, &'a ());
 
 impl MySqlService {
+    /// Makes sure mysqld is running (see [ServiceRunning::is_running])
     pub fn run<R: Requirement>(&mut self, context: &mut Context<R>) -> RunningMySqlService
+    where
+        R: Supports<ServiceRunning>,
+    {
+        let node = ServiceRunning::is_running(context, &self.service);
+        RunningMySqlService(node, &())
+    }
+
+    /// Restarts mysqld (see [ServiceRunning::restart])
+    pub fn restart<R: Requirement>(&mut self, context: &mut Context<R>) -> RunningMySqlService
     where
         R: Supports<ServiceRunning>,
     {

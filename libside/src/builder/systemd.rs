@@ -349,12 +349,21 @@ impl TimerData {
     }
 }
 
+fn _true() -> bool { true }
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ServiceRunning {
     name: String,
+    #[serde(default = "_true")]
+    must_restart: bool,
+
+    #[serde(default)]
+    oneshot: bool,
 }
 
 impl ServiceRunning {
+    /// Require service to be restarted and running.
+    /// Use this function when new configuration may have been added, meaning a restart is necessary.
     pub fn restart<U: SystemdUnit, R: Requirement + Supports<ServiceRunning>>(
         context: &mut Context<R>,
         unit: &U,
@@ -362,6 +371,42 @@ impl ServiceRunning {
         context.add_node(
             ServiceRunning {
                 name: unit.name().to_string(),
+                must_restart: true,
+                oneshot: false,
+            },
+            unit.start_dependencies(),
+        )
+    }
+
+    /// Require service to be running. 
+    /// Use this function when no new configuration has been added, meaning a restart isn't necessary.
+    pub fn is_running<U: SystemdUnit, R: Requirement + Supports<ServiceRunning>>(
+        context: &mut Context<R>,
+        unit: &U,
+    ) -> GraphNodeReference {
+        context.add_node(
+            ServiceRunning {
+                name: unit.name().to_string(),
+                must_restart: false,
+                oneshot: false,
+            },
+            unit.start_dependencies(),
+        )
+    }
+
+    /// Require service to be running.
+    /// Use this function if the service is not meant to run continuously. For example, a backup task that runs once every X hours.
+    /// The service will be started if it is not already active. No restart is performed if it's already running.
+    /// When verifying, the service is not required to be running.
+    pub fn trigger<U: SystemdUnit, R: Requirement + Supports<ServiceRunning>>(
+        context: &mut Context<R>,
+        unit: &U,
+    ) -> GraphNodeReference {
+        context.add_node(
+            ServiceRunning {
+                name: unit.name().to_string(),
+                must_restart: false,
+                oneshot: true,
             },
             unit.start_dependencies(),
         )
@@ -403,8 +448,16 @@ impl Requirement for ServiceRunning {
     }
 
     fn modify<S: crate::system::System>(&self, system: &mut S) -> Result<(), Self::ModifyError<S>> {
+        let action = if self.must_restart {
+            "restart"
+        } else {
+            // systemd doesn't do anything if we run systemctl start ... on an already running service.
+            // but just in case the service somehow died after we checked its status, we can try to start it.
+            "start"
+        };
+
         let result = system
-            .execute_command("systemctl", &["restart", &self.name])
+            .execute_command("systemctl", &[action, &self.name])
             .map_err(SystemdError::FailedToStart)?;
         result.successful()?;
 
@@ -454,7 +507,13 @@ impl Requirement for ServiceRunning {
     }
 
     fn verify<S: System>(&self, system: &mut S) -> Result<bool, ()> {
-        Ok(self.has_been_created(system).unwrap())
+        if self.oneshot {
+            // Oneshot services don't run all the time.
+            // That means the requirement is valid regardless of whether the service is running or not.
+            Ok(true)
+        } else {
+            Ok(self.has_been_created(system).unwrap())
+        }
     }
 
     const NAME: &'static str = "service_status";
@@ -711,19 +770,27 @@ mod tests {
     pub fn serialize_deserialize_service_running() {
         let r = ServiceRunning {
             name: String::from("foo"),
+            must_restart: true,
+            oneshot: false,
         };
-        let json = r#"{"name":"foo"}"#;
+        let json = r#"{"name":"foo","must_restart":true,"oneshot":false}"#;
 
         assert_eq!(serde_json::to_string(&r).unwrap(), json);
         assert_eq!(r, serde_json::from_str(json).unwrap());
+
+        // v0.1.15
+        assert_eq!(r, serde_json::from_str(r#"{"name":"foo"}"#).unwrap());
     }
 
     #[test]
     #[ignore]
     pub fn lxc_service_running() {
         let mut sys = LxcInstance::start();
+        // must_restart: true, oneshot: false
         let p = ServiceRunning {
             name: String::from("nginx"),
+            must_restart: true,
+            oneshot: false,
         };
 
         sys.execute_command("apt-get", &[ "install", "-y", "nginx" ]).unwrap();
@@ -735,6 +802,64 @@ mod tests {
 
         assert!(!p.has_been_created(&mut sys).unwrap());
         assert!(!p.verify(&mut sys).unwrap());
+
+        p.create(&mut sys).unwrap();
+
+        assert!(p.has_been_created(&mut sys).unwrap());
+        assert!(p.verify(&mut sys).unwrap());
+
+        let result = sys.execute_command("pidof", &["nginx"]).unwrap();
+        let pid1 = result.stdout_as_str();
+
+        p.modify(&mut sys).unwrap();
+
+        let result = sys.execute_command("pidof", &["nginx"]).unwrap();
+        let pid2 = result.stdout_as_str();
+        assert!(pid1 != pid2, "The service was not restarted (pid1 = {}, pid2 = {}), but must_restart = true", pid1, pid2);
+
+        // must_restart: false, oneshot: false
+        let p = ServiceRunning {
+            name: String::from("nginx"),
+            must_restart: false,
+            oneshot: false,
+        };
+
+        assert!(p.has_been_created(&mut sys).unwrap());
+        assert!(p.verify(&mut sys).unwrap());
+
+        p.delete(&mut sys).unwrap();
+
+        assert!(!p.has_been_created(&mut sys).unwrap());
+        assert!(!p.verify(&mut sys).unwrap());
+
+        p.create(&mut sys).unwrap();
+
+        assert!(p.has_been_created(&mut sys).unwrap());
+        assert!(p.verify(&mut sys).unwrap());
+
+        let result = sys.execute_command("pidof", &["nginx"]).unwrap();
+        let pid1 = result.stdout_as_str();
+
+        p.modify(&mut sys).unwrap();
+
+        let result = sys.execute_command("pidof", &["nginx"]).unwrap();
+        let pid2 = result.stdout_as_str();
+        assert!(pid1 == pid2, "The service was restarted (pid1 = {}, pid2 = {}), but must_restart = false", pid1, pid2);
+
+        // must_restart: false, oneshot: true
+        let p = ServiceRunning {
+            name: String::from("nginx"),
+            must_restart: false,
+            oneshot: true,
+        };
+
+        assert!(p.has_been_created(&mut sys).unwrap());
+        assert!(p.verify(&mut sys).unwrap());
+
+        p.delete(&mut sys).unwrap();
+
+        assert!(!p.has_been_created(&mut sys).unwrap());
+        assert!(p.verify(&mut sys).unwrap());
 
         p.create(&mut sys).unwrap();
 
