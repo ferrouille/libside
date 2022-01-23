@@ -13,10 +13,10 @@ use std::{
 #[macro_export]
 macro_rules! requirements {
     ($($rest:ty),+ $(,)*) => {
-        $crate::requirements::Wrapper::<requirements!(@ $($rest,)*)>
+        $crate::requirements::Wrapper::<$crate::requirements!(@ $($rest,)*)>
     };
     (@ $ty:ty $(, $rest:ty)+, ) => {
-        $crate::requirements::Join::<$ty, requirements!(@ $($rest,)*)>
+        $crate::requirements::Join::<$ty, $crate::requirements!(@ $($rest,)*)>
     };
     (@ $ty:ty,) => {
         $crate::requirements::Unit::<$ty>

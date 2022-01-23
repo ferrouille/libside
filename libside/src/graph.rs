@@ -186,7 +186,6 @@ impl<R: Requirement, State: Default + Copy> Graph<R, State> {
         }
 
         undo.retain(|index, _| nodes_to_undo[index]);
-        println!("Undo graph: {:?}", undo);
         Ok(undo)
     }
 
@@ -208,7 +207,9 @@ impl<R: Requirement, State: Default + Copy> Graph<R, State> {
             items: self.nodes.iter().map(|n| &n.requirement).collect(),
         })
     }
+}
 
+impl<R: Requirement> Graph<R, Applied> {
     pub fn generate_fix_sequence<S: System>(
         &self,
         _system: &mut S,
@@ -216,6 +217,7 @@ impl<R: Requirement, State: Default + Copy> Graph<R, State> {
         let mut result = ApplySequence {
             undo: Vec::new(),
             todo: Vec::new(),
+            prev: self,
         };
 
         let mut walker = GraphWalker::new(&self);
@@ -240,6 +242,7 @@ impl<'g, R: Requirement, State> ComparedGraph<'g, R, State> {
         let mut result = ApplySequence {
             undo: Vec::new(),
             todo: Vec::new(),
+            prev: self.prev,
         };
         let mut walker = GraphWalker::new(&self.undo);
         while let Some((_, node)) = walker.next() {
@@ -323,6 +326,7 @@ pub struct Do<'r, R> {
 pub struct ApplySequence<'r, R> {
     undo: Vec<Undo<'r, R>>,
     todo: Vec<Do<'r, R>>,
+    prev: &'r Graph<R, Applied>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -463,40 +467,29 @@ impl<'r, R: Requirement> ApplySequence<'r, R> {
             Position::Undo(_) => 0,
             Position::Todo(index) => index,
         };
+
+        // We need to undo any changes that won't be overwritten by re-applying the previous graph
         for entry in self.todo.iter().take(num_todo).rev() {
-            println!("  undo: {}", entry.requirement);
-            if entry.requirement.can_undo() {
-                if info.pre_existing.contains(&entry.source) {
-                    entry.requirement.pre_existing_delete(system)
-                } else {
-                    entry.requirement.delete(system)
-                }
-                .unwrap();
-            }
-        }
-
-        let num_undo = match info.position {
-            Position::Undo(index) => index,
-            Position::Todo(_) => self.undo.len(),
-        };
-        for entry in self.undo.iter().take(num_undo).rev() {
-            println!("  require: {}", entry.requirement);
-            let r = &entry.requirement;
-            match r.has_been_created(system) {
-                Ok(has_been_created) => {
-                    if has_been_created {
-                        if !entry.pre_existing && !r.may_pre_exist() {
-                            panic!("Pre-existing when trying to undo: {}", r);
-                        }
-
-                        r.modify(system).unwrap();
+            if !self
+                .prev
+                .nodes
+                .iter()
+                .any(|n| n.requirement.affects(entry.requirement))
+            {
+                println!("  undo: {}", entry.requirement);
+                if entry.requirement.can_undo() {
+                    if info.pre_existing.contains(&entry.source) {
+                        entry.requirement.pre_existing_delete(system)
                     } else {
-                        r.create(system).unwrap();
+                        entry.requirement.delete(system)
                     }
+                    .unwrap();
                 }
-                Err(inner) => panic!("Error: {}", inner),
             }
         }
+
+        let fix_sequence = self.prev.generate_fix_sequence(system).unwrap();
+        let _ = fix_sequence.run(system).unwrap();
 
         Ok(())
     }
@@ -545,9 +538,12 @@ impl<'r, R: Requirement + Display> VerifySequence<'r, R> {
 
 #[cfg(test)]
 mod tests {
-    use crate::graph::{Applied, ApplyResult, Do, GraphNodeReference, Pending, Undo};
+    use crate::{
+        graph::{Applied, ApplyResult, Do, GraphNodeReference, Pending, Undo},
+        requirements::{self, Supports},
+    };
     use serde::{Deserialize, Serialize};
-    use std::path::PathBuf;
+    use std::{collections::HashSet, fmt::Display, path::PathBuf};
 
     use super::{Graph, Requirement, System};
 
@@ -600,26 +596,77 @@ mod tests {
         };
     }
 
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    struct AlwaysFail;
+
+    impl Display for AlwaysFail {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "AlwaysFail")
+        }
+    }
+
+    impl Requirement for AlwaysFail {
+        const NAME: &'static str = "alwaysfail";
+
+        type CreateError<S: System> = FakeError;
+        type ModifyError<S: System> = FakeError;
+        type DeleteError<S: System> = FakeError;
+        type HasBeenCreatedError<S: System> = FakeError;
+
+        fn create<S: System>(&self, _system: &mut S) -> Result<(), Self::CreateError<S>> {
+            Err(FakeError)
+        }
+        fn modify<S: System>(&self, _system: &mut S) -> Result<(), Self::ModifyError<S>> {
+            Err(FakeError)
+        }
+        fn delete<S: System>(&self, _system: &mut S) -> Result<(), Self::DeleteError<S>> {
+            Err(FakeError)
+        }
+
+        fn has_been_created<S: System>(
+            &self,
+            _system: &mut S,
+        ) -> Result<bool, Self::HasBeenCreatedError<S>> {
+            Err(FakeError)
+        }
+
+        fn affects(&self, _other: &Self) -> bool {
+            true
+        }
+        fn supports_modifications(&self) -> bool {
+            false
+        }
+        fn can_undo(&self) -> bool {
+            true
+        }
+        fn may_pre_exist(&self) -> bool {
+            false
+        }
+        fn verify<S: System>(&self, _system: &mut S) -> Result<bool, ()> {
+            Ok(true)
+        }
+    }
+
     #[derive(Debug, thiserror::Error)]
     #[error("Error")]
     struct FakeError;
 
     impl Requirement for Foo {
-        type CreateError<S: System> = FakeError;
+        type CreateError<S: System> = S::Error;
         type ModifyError<S: System> = FakeError;
-        type DeleteError<S: System> = FakeError;
+        type DeleteError<S: System> = S::Error;
         type HasBeenCreatedError<S: System> = S::Error;
 
-        fn create<S: super::System>(&self, _system: &mut S) -> Result<(), Self::CreateError<S>> {
-            todo!()
+        fn create<S: super::System>(&self, system: &mut S) -> Result<(), Self::CreateError<S>> {
+            Ok(system.copy_file(&PathBuf::new(), &PathBuf::from(format!("{}", self.id)))?)
         }
 
         fn modify<S: super::System>(&self, _system: &mut S) -> Result<(), Self::ModifyError<S>> {
-            todo!()
+            Ok(())
         }
 
-        fn delete<S: super::System>(&self, _system: &mut S) -> Result<(), Self::DeleteError<S>> {
-            todo!()
+        fn delete<S: super::System>(&self, system: &mut S) -> Result<(), Self::DeleteError<S>> {
+            Ok(system.remove_file(&PathBuf::from(format!("{}", self.id)))?)
         }
 
         fn has_been_created<S: super::System>(
@@ -642,11 +689,11 @@ mod tests {
         }
 
         fn may_pre_exist(&self) -> bool {
-            todo!()
+            false
         }
 
-        fn verify<S: System>(&self, _system: &mut S) -> Result<bool, ()> {
-            todo!()
+        fn verify<S: System>(&self, system: &mut S) -> Result<bool, ()> {
+            self.has_been_created(system).map_err(|_| ())
         }
 
         const NAME: &'static str = "foo";
@@ -660,7 +707,7 @@ mod tests {
 
     #[derive(Debug)]
     struct FakeSystem {
-        created: Vec<PathBuf>,
+        created: HashSet<PathBuf>,
     }
 
     impl System for FakeSystem {
@@ -686,21 +733,29 @@ mod tests {
         fn copy_file(
             &mut self,
             _from: &std::path::Path,
-            _to: &std::path::Path,
+            to: &std::path::Path,
         ) -> Result<(), Self::Error> {
-            todo!()
+            self.created.insert(to.to_path_buf());
+
+            Ok(())
         }
 
-        fn make_dir(&mut self, _path: &std::path::Path) -> Result<(), Self::Error> {
-            todo!()
+        fn make_dir(&mut self, path: &std::path::Path) -> Result<(), Self::Error> {
+            self.created.insert(path.to_path_buf());
+
+            Ok(())
         }
 
-        fn remove_dir(&mut self, _path: &std::path::Path) -> Result<(), Self::Error> {
-            todo!()
+        fn remove_dir(&mut self, path: &std::path::Path) -> Result<(), Self::Error> {
+            self.created.retain(|item| item != path);
+
+            Ok(())
         }
 
-        fn remove_file(&mut self, _path: &std::path::Path) -> Result<(), Self::Error> {
-            todo!()
+        fn remove_file(&mut self, path: &std::path::Path) -> Result<(), Self::Error> {
+            self.created.retain(|item| item != path);
+
+            Ok(())
         }
 
         fn get_user(&mut self, _name: &str) -> Result<Option<()>, Self::Error> {
@@ -810,7 +865,7 @@ mod tests {
         println!("next       : {:?}", next);
 
         let mut sys = FakeSystem {
-            created: Vec::new(),
+            created: Default::default(),
         };
 
         let cmp = next.compare_with(&mut sys, &prev).unwrap();
@@ -874,7 +929,7 @@ mod tests {
         println!("next       : {:?}", next);
 
         let mut sys = FakeSystem {
-            created: Vec::new(),
+            created: Default::default(),
         };
 
         let cmp = next.compare_with(&mut sys, &prev).unwrap();
@@ -921,7 +976,7 @@ mod tests {
         println!("next       : {:?}", next);
 
         let mut sys = FakeSystem {
-            created: Vec::new(),
+            created: Default::default(),
         };
 
         let cmp = next.compare_with(&mut sys, &prev).unwrap();
@@ -966,7 +1021,7 @@ mod tests {
         println!("next       : {:?}", next);
 
         let mut sys = FakeSystem {
-            created: vec![PathBuf::from("4")],
+            created: [PathBuf::from("4")].into_iter().collect(),
         };
 
         let cmp = next.compare_with(&mut sys, &prev).unwrap();
@@ -1014,6 +1069,136 @@ mod tests {
                     requirement: &Foo::END,
                 },
             ]
+        );
+    }
+
+    #[test]
+    pub fn apply() {
+        let v0 = Graph::<Foo, Applied>::new();
+        let mut v1 = Graph::<Foo, Pending>::new();
+        let root = v1.add(Foo::ROOT, &[]);
+        let a = v1.add(Foo::A, &[root]);
+        let b = v1.add(Foo::B, &[root]);
+        let c = v1.add(Foo::C, &[a, root]);
+        let _end = v1.add(Foo::END, &[b, c]);
+
+        println!("prev       : {:?}", v0);
+        println!("next       : {:?}", v1);
+
+        let mut sys = FakeSystem {
+            created: Default::default(),
+        };
+
+        let cmp = v1.compare_with(&mut sys, &v0).unwrap();
+        let seq = cmp.generate_application_sequence(&mut sys).unwrap();
+        let results = seq.run(&mut sys).unwrap();
+        let v1 = v1.apply_execution_results(results);
+
+        assert_eq!(
+            sys.created,
+            [
+                PathBuf::from("0"),
+                PathBuf::from("1"),
+                PathBuf::from("2"),
+                PathBuf::from("3"),
+                PathBuf::from("100"),
+            ]
+            .into_iter()
+            .collect()
+        );
+
+        let mut v2 = Graph::<Foo, Pending>::new();
+        let root = v2.add(Foo::ROOT, &[]);
+        let a = v2.add(Foo::A, &[root]);
+        let c = v2.add(Foo::C, &[a, root]);
+        let _end = v2.add(Foo::END, &[c]);
+
+        println!("prev       : {:?}", v1);
+        println!("next       : {:?}", v2);
+
+        let cmp = v2.compare_with(&mut sys, &v1).unwrap();
+        let seq = cmp.generate_application_sequence(&mut sys).unwrap();
+        let results = seq.run(&mut sys).unwrap();
+        let _v2 = v2.apply_execution_results(results);
+
+        assert_eq!(
+            sys.created,
+            [
+                PathBuf::from("0"),
+                PathBuf::from("1"),
+                PathBuf::from("3"),
+                PathBuf::from("100"),
+            ]
+            .into_iter()
+            .collect()
+        );
+    }
+
+    #[test]
+    pub fn apply_revert() {
+        type NodeTy = crate::requirements!(Foo, AlwaysFail);
+
+        let v0 = Graph::<NodeTy, Applied>::new();
+        let mut v1 = Graph::<NodeTy, Pending>::new();
+        let root = v1.add(Supports::create_from(Foo::ROOT), &[]);
+        let a = v1.add(Supports::create_from(Foo::A), &[root]);
+        let b = v1.add(Supports::create_from(Foo::B), &[root]);
+        let c = v1.add(Supports::create_from(Foo::C), &[a, root]);
+        let _end = v1.add(Supports::create_from(Foo::END), &[b, c]);
+
+        println!("prev       : {:?}", v0);
+        println!("next       : {:?}", v1);
+
+        let mut sys = FakeSystem {
+            created: Default::default(),
+        };
+
+        let cmp = v1.compare_with(&mut sys, &v0).unwrap();
+        let seq = cmp.generate_application_sequence(&mut sys).unwrap();
+        let results = seq.run(&mut sys).unwrap();
+        let v1 = v1.apply_execution_results(results);
+
+        assert_eq!(
+            sys.created,
+            [
+                PathBuf::from("0"),
+                PathBuf::from("1"),
+                PathBuf::from("2"),
+                PathBuf::from("3"),
+                PathBuf::from("100"),
+            ]
+            .into_iter()
+            .collect()
+        );
+
+        let mut v2 = Graph::<NodeTy, Pending>::new();
+        let root = v2.add(Supports::create_from(Foo::ROOT), &[]);
+        let a = v2.add(Supports::create_from(Foo::A), &[root]);
+        let c = v2.add(Supports::create_from(Foo::C), &[a, root]);
+        let end = v2.add(Supports::create_from(Foo::END), &[c]);
+        let _fail = v2.add(Supports::create_from(AlwaysFail), &[end]);
+
+        println!("prev       : {:?}", v1);
+        println!("next       : {:?}", v2);
+
+        let cmp = v2.compare_with(&mut sys, &v1).unwrap();
+        let seq = cmp.generate_application_sequence(&mut sys).unwrap();
+        let err = seq.run(&mut sys).unwrap_err();
+        println!("Apply failed successfully");
+        println!("System state: {:?}", sys);
+        seq.revert(&mut sys, &err.revert_info).unwrap();
+
+        assert_eq!(
+            sys.created,
+            [
+                PathBuf::from("0"),
+                PathBuf::from("1"),
+                PathBuf::from("2"),
+                PathBuf::from("3"),
+                PathBuf::from("100"),
+            ]
+            .into_iter()
+            .collect()
         );
     }
 }
