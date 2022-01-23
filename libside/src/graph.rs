@@ -540,7 +540,7 @@ impl<'r, R: Requirement + Display> VerifySequence<'r, R> {
 mod tests {
     use crate::{
         graph::{Applied, ApplyResult, Do, GraphNodeReference, Pending, Undo},
-        requirements::{self, Supports},
+        requirements::Supports,
     };
     use serde::{Deserialize, Serialize};
     use std::{collections::HashSet, fmt::Display, path::PathBuf};

@@ -94,18 +94,11 @@ pub trait Builder {
 pub struct GeneratedFile {
     source: PathBuf,
     contents: Vec<u8>,
-    needs_cleanup: bool,
 }
 
 #[derive(Debug)]
 pub struct DeletedFile {
     save_to: PathBuf,
-}
-
-#[derive(Debug)]
-pub struct ConfigDir {
-    target: PathBuf,
-    needs_cleanup: bool,
 }
 
 pub trait AsParam {

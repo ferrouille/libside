@@ -86,11 +86,7 @@ impl ConfigFileData {
             &depends_on,
         );
 
-        context.files.push(GeneratedFile {
-            source,
-            contents,
-            needs_cleanup: true,
-        });
+        context.files.push(GeneratedFile { source, contents });
 
         Path {
             base: path,
