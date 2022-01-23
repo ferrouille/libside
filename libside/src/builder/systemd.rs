@@ -663,11 +663,10 @@ impl Requirement for EnableService {
             .execute_command("systemctl", &["is-enabled", &self.name])
             .map_err(SystemdError::FailedToStart)?;
         if !result.is_success() {
-            return Ok(false);
+            return Ok(self.disable);
         }
 
         let s = result.stdout_as_str().trim();
-
         Ok(if self.disable {
             s == "disabled" || s == "static"
         } else {
