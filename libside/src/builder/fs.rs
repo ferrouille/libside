@@ -119,7 +119,7 @@ impl Display for Sha3 {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FileWithContents {
     local_file: PathBuf,
     to: PathBuf,
@@ -225,7 +225,7 @@ impl Display for FileWithContents {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CreateDirectory {
     path: PathBuf,
     needs_cleanup: bool,
@@ -326,7 +326,7 @@ impl Display for CreateDirectory {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Delete {
     path: PathBuf,
     copy_to: PathBuf,
@@ -425,7 +425,7 @@ impl Display for Delete {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Chown {
     path: PathBuf,
     user: String,
@@ -525,7 +525,7 @@ impl Display for Chown {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Chmod {
     path: PathBuf,
     permissions: u32,
@@ -593,5 +593,74 @@ impl Requirement for Chmod {
 impl Display for Chmod {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "chmod({}, {:o})", self.path.display(), self.permissions)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use crate::builder::fs::{Chmod, Chown, CreateDirectory, Delete, FileWithContents, Sha3};
+
+    #[test]
+    pub fn serialize_deserialize_file_with_contents() {
+        let r = FileWithContents {
+            local_file: PathBuf::from("/foo/bar/baz"),
+            to: PathBuf::from("/fizz/buzz"),
+            sha3: Sha3::hash("Hello World".as_bytes()),
+        };
+        let json = r#"{"local_file":"/foo/bar/baz","to":"/fizz/buzz","sha3":[225,103,246,141,101,99,215,91,178,95,58,164,156,41,239,97,45,65,53,45,192,6,6,222,124,189,99,11,178,102,95,81]}"#;
+
+        assert_eq!(serde_json::to_string(&r).unwrap(), json);
+        assert_eq!(r, serde_json::from_str(json).unwrap());
+    }
+
+    #[test]
+    pub fn serialize_deserialize_create_directory() {
+        let r = CreateDirectory {
+            path: PathBuf::from("/foo/bar/baz"),
+            needs_cleanup: false,
+        };
+        let json = r#"{"path":"/foo/bar/baz","needs_cleanup":false}"#;
+
+        assert_eq!(serde_json::to_string(&r).unwrap(), json);
+        assert_eq!(r, serde_json::from_str(json).unwrap());
+    }
+
+    #[test]
+    pub fn serialize_deserialize_delete() {
+        let r = Delete {
+            path: PathBuf::from("/foo/bar/baz"),
+            copy_to: PathBuf::from("/fizz/buzz"),
+        };
+        let json = r#"{"path":"/foo/bar/baz","copy_to":"/fizz/buzz"}"#;
+
+        assert_eq!(serde_json::to_string(&r).unwrap(), json);
+        assert_eq!(r, serde_json::from_str(json).unwrap());
+    }
+
+    #[test]
+    pub fn serialize_deserialize_chown() {
+        let r = Chown {
+            path: PathBuf::from("/foo/bar/baz"),
+            user: String::from("fizz"),
+            group: String::from("buzz"),
+        };
+        let json = r#"{"path":"/foo/bar/baz","user":"fizz","group":"buzz"}"#;
+
+        assert_eq!(serde_json::to_string(&r).unwrap(), json);
+        assert_eq!(r, serde_json::from_str(json).unwrap());
+    }
+
+    #[test]
+    pub fn serialize_deserialize_chmod() {
+        let r = Chmod {
+            path: PathBuf::from("/foo/bar/baz"),
+            permissions: 0o754,
+        };
+        let json = r#"{"path":"/foo/bar/baz","permissions":492}"#;
+
+        assert_eq!(serde_json::to_string(&r).unwrap(), json);
+        assert_eq!(r, serde_json::from_str(json).unwrap());
     }
 }

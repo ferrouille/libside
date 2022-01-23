@@ -210,7 +210,7 @@ impl MySqlUser {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CreateMySqlDatabase {
     name: String,
 }
@@ -318,7 +318,7 @@ impl Display for CreateMySqlDatabase {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CreateMySqlUser {
     name: String,
     pass: String,
@@ -444,7 +444,7 @@ impl Display for CreateMySqlUser {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CreateMySqlGrant {
     user: String,
     database: String,
@@ -572,5 +572,46 @@ impl Requirement for CreateMySqlGrant {
 impl Display for CreateMySqlGrant {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "grant({})", self.user)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::builder::mysql::{CreateMySqlDatabase, CreateMySqlGrant, CreateMySqlUser};
+
+    #[test]
+    pub fn serialize_deserialize_create_mysql_database() {
+        let r = CreateMySqlDatabase {
+            name: String::from("foo"),
+        };
+        let json = r#"{"name":"foo"}"#;
+
+        assert_eq!(serde_json::to_string(&r).unwrap(), json);
+        assert_eq!(r, serde_json::from_str(json).unwrap());
+    }
+
+    #[test]
+    pub fn serialize_deserialize_create_mysql_user() {
+        let r = CreateMySqlUser {
+            name: String::from("foo"),
+            pass: String::from("bar"),
+        };
+        let json = r#"{"name":"foo","pass":"bar"}"#;
+
+        assert_eq!(serde_json::to_string(&r).unwrap(), json);
+        assert_eq!(r, serde_json::from_str(json).unwrap());
+    }
+
+    #[test]
+    pub fn serialize_deserialize_create_mysql_grant() {
+        let r = CreateMySqlGrant {
+            user: String::from("foo"),
+            database: String::from("bar"),
+            privileges: String::from("baz"),
+        };
+        let json = r#"{"user":"foo","database":"bar","privileges":"baz"}"#;
+
+        assert_eq!(serde_json::to_string(&r).unwrap(), json);
+        assert_eq!(r, serde_json::from_str(json).unwrap());
     }
 }

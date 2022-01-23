@@ -86,3 +86,30 @@ impl<const LENGTH: usize, K: PasswordKind> Secret for Password<LENGTH, K> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::secrets::{
+        password::{Alphabetic, Alphanumeric, Password},
+        Secret,
+    };
+
+    #[test]
+    pub fn password() {
+        assert_eq!(Password::<4, Alphabetic>::generate_new().as_ref().len(), 4);
+        assert_eq!(Password::<8, Alphabetic>::generate_new().as_ref().len(), 8);
+        assert_eq!(
+            Password::<64, Alphabetic>::generate_new().as_ref().len(),
+            64
+        );
+
+        assert!(Password::<1024, Alphabetic>::generate_new()
+            .as_ref()
+            .chars()
+            .all(|c| char::is_alphabetic(c)));
+        assert!(Password::<1024, Alphanumeric>::generate_new()
+            .as_ref()
+            .chars()
+            .all(|c| char::is_alphanumeric(c)));
+    }
+}

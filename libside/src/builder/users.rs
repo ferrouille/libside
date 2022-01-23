@@ -257,7 +257,7 @@ impl<'r> UserConfig<'r> {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CreateUser {
     #[serde(default)]
     pub(crate) uid: Option<u32>,
@@ -428,7 +428,7 @@ impl Display for CreateUser {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CreateGroup {
     #[serde(default)]
     gid: Option<u32>,
@@ -541,5 +541,40 @@ impl Requirement for CreateGroup {
 impl Display for CreateGroup {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "group({})", self.name)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::builder::users::{CreateGroup, CreateUser};
+
+    #[test]
+    pub fn serialize_deserialize_create_user() {
+        let r = CreateUser {
+            uid: Some(42),
+            name: String::from("foo"),
+            group: Some(String::from("bar")),
+            system: true,
+            supplementary_groups: vec![String::from("fizz"), String::from("buzz")],
+            shell: String::from("baz"),
+            home_dir: None,
+        };
+        let json = r#"{"uid":42,"name":"foo","group":"bar","system":true,"supplementary_groups":["fizz","buzz"],"shell":"baz","home_dir":null}"#;
+
+        assert_eq!(serde_json::to_string(&r).unwrap(), json);
+        assert_eq!(r, serde_json::from_str(json).unwrap());
+    }
+
+    #[test]
+    pub fn serialize_deserialize_create_group() {
+        let r = CreateGroup {
+            gid: Some(42),
+            name: String::from("foo"),
+            system: true,
+        };
+        let json = r#"{"gid":42,"name":"foo","system":true}"#;
+
+        assert_eq!(serde_json::to_string(&r).unwrap(), json);
+        assert_eq!(r, serde_json::from_str(json).unwrap());
     }
 }

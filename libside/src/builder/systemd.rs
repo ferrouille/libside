@@ -349,7 +349,7 @@ impl TimerData {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ServiceRunning {
     name: String,
 }
@@ -466,7 +466,7 @@ impl Display for ServiceRunning {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct InstallServices;
 
 impl InstallServices {
@@ -573,7 +573,7 @@ impl Display for InstallServices {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct EnableService {
     name: String,
     disable: bool,
@@ -701,5 +701,42 @@ impl Requirement for EnableService {
 impl Display for EnableService {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}({})", Self::keyword(self.disable), self.name)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::builder::systemd::{EnableService, InstallServices, ServiceRunning};
+
+    #[test]
+    pub fn serialize_deserialize_service_running() {
+        let r = ServiceRunning {
+            name: String::from("foo"),
+        };
+        let json = r#"{"name":"foo"}"#;
+
+        assert_eq!(serde_json::to_string(&r).unwrap(), json);
+        assert_eq!(r, serde_json::from_str(json).unwrap());
+    }
+
+    #[test]
+    pub fn serialize_deserialize_install_services() {
+        let r = InstallServices;
+        let json = r#"null"#;
+
+        assert_eq!(serde_json::to_string(&r).unwrap(), json);
+        assert_eq!(r, serde_json::from_str(json).unwrap());
+    }
+
+    #[test]
+    pub fn serialize_deserialize_enable_service() {
+        let r = EnableService {
+            name: String::from("foo"),
+            disable: false,
+        };
+        let json = r#"{"name":"foo","disable":false}"#;
+
+        assert_eq!(serde_json::to_string(&r).unwrap(), json);
+        assert_eq!(r, serde_json::from_str(json).unwrap());
     }
 }

@@ -40,7 +40,7 @@ pub trait AptPackage {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AptInstall {
     name: String,
 }
@@ -150,5 +150,21 @@ impl Requirement for AptInstall {
 impl Display for AptInstall {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "apt({})", self.name)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::builder::apt::AptInstall;
+
+    #[test]
+    pub fn serialize_deserialize_apt_install() {
+        let r = AptInstall {
+            name: "test".to_string(),
+        };
+        let json = r#"{"name":"test"}"#;
+
+        assert_eq!(serde_json::to_string(&r).unwrap(), json);
+        assert_eq!(r, serde_json::from_str(json).unwrap());
     }
 }
