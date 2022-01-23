@@ -103,61 +103,14 @@ impl System for LocalSystem {
         args: &[&str],
         input: &[u8],
     ) -> Result<CommandResult, Self::CommandError> {
-        let mut child = Command::new(path)
+        let child = Command::new(path)
             .args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()?;
 
-        // TODO: This may propagate an error that we should handle (i.e. blocking reads return an error)
-        let mut stdin_stream = child.stdin.take();
-        let mut stdout_stream = child.stdout.take().unwrap();
-        let mut stdout = Vec::new();
-        let mut stderr_stream = child.stderr.take().unwrap();
-        let mut stderr = Vec::new();
-        let mut to_write = input;
-        let mut buf = [0u8; 4096];
-        let status = loop {
-            match child.try_wait()? {
-                Some(status) => break status,
-                None => {
-                    if let Some(stdin) = &mut stdin_stream {
-                        if to_write.len() > 0 {
-                            let written = stdin.write(&to_write)?;
-                            println!(
-                                "Written: [{}]",
-                                std::str::from_utf8(&to_write[..written]).unwrap()
-                            );
-                            to_write = &to_write[written..];
-
-                            if to_write.len() <= 0 {
-                                let stdin = stdin_stream.take().unwrap();
-                                drop(stdin);
-                            }
-                        }
-                    }
-
-                    let read_stderr = stderr_stream.read(&mut buf)?;
-                    if read_stderr > 0 {
-                        stderr.extend(&buf[..read_stderr]);
-                    }
-
-                    let read_stdout = stdout_stream.read(&mut buf)?;
-                    if read_stdout == 0 {
-                        break child.wait()?;
-                    } else {
-                        stdout.extend(&buf[..read_stdout]);
-                    }
-                }
-            }
-        };
-
-        Ok(CommandResult {
-            exit_code: status.code(),
-            stdout,
-            stderr,
-        })
+        handle_process_io(child, input)
     }
 
     fn chmod(&mut self, path: &Path, mode: u32) -> Result<(), Self::Error> {
@@ -168,6 +121,56 @@ impl System for LocalSystem {
 
         Ok(())
     }
+}
+
+pub(crate) fn handle_process_io(mut child: std::process::Child, input: &[u8]) -> Result<CommandResult, io::Error> {
+    // TODO: This may propagate an error that we should handle (i.e. blocking reads return an error)
+    let mut stdin_stream = child.stdin.take();
+    let mut stdout_stream = child.stdout.take().unwrap();
+    let mut stdout = Vec::new();
+    let mut stderr_stream = child.stderr.take().unwrap();
+    let mut stderr = Vec::new();
+    let mut to_write = input;
+    let mut buf = [0u8; 4096];
+    let status = loop {
+        match child.try_wait()? {
+            Some(status) => break status,
+            None => {
+                if let Some(stdin) = &mut stdin_stream {
+                    if to_write.len() > 0 {
+                        let written = stdin.write(&to_write)?;
+                        println!(
+                            "Written: [{}]",
+                            std::str::from_utf8(&to_write[..written]).unwrap()
+                        );
+                        to_write = &to_write[written..];
+
+                        if to_write.len() <= 0 {
+                            let stdin = stdin_stream.take().unwrap();
+                            drop(stdin);
+                        }
+                    }
+                }
+
+                let read_stderr = stderr_stream.read(&mut buf)?;
+                if read_stderr > 0 {
+                    stderr.extend(&buf[..read_stderr]);
+                }
+
+                let read_stdout = stdout_stream.read(&mut buf)?;
+                if read_stdout == 0 {
+                    break child.wait()?;
+                } else {
+                    stdout.extend(&buf[..read_stdout]);
+                }
+            }
+        }
+    };
+    Ok(CommandResult {
+        exit_code: status.code(),
+        stdout,
+        stderr,
+    })
 }
 
 pub struct CommandResult {
@@ -196,6 +199,14 @@ impl CommandResult {
         } else {
             Err((self.stdout_as_str(), self.stderr_as_str()))
         }
+    }
+
+    pub fn stdout(&self) -> &[u8] {
+        &self.stdout
+    }
+
+    pub fn stderr(&self) -> &[u8] {
+        &self.stderr
     }
 
     pub fn stdout_as_str(&self) -> &str {

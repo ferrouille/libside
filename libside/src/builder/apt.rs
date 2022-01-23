@@ -155,7 +155,7 @@ impl Display for AptInstall {
 
 #[cfg(test)]
 mod tests {
-    use crate::builder::apt::AptInstall;
+    use crate::{builder::apt::AptInstall, testing::LxcInstance, requirements::Requirement};
 
     #[test]
     pub fn serialize_deserialize_apt_install() {
@@ -166,5 +166,27 @@ mod tests {
 
         assert_eq!(serde_json::to_string(&r).unwrap(), json);
         assert_eq!(r, serde_json::from_str(json).unwrap());
+    }
+
+    #[test]
+    #[ignore]
+    pub fn lxc_apt_install() {
+        let mut sys = LxcInstance::start();
+        let p = AptInstall {
+            name: "nginx".to_string(),
+        };
+
+        assert!(!p.has_been_created(&mut sys).unwrap());
+        assert!(!p.verify(&mut sys).unwrap());
+
+        p.create(&mut sys).unwrap();
+
+        assert!(p.has_been_created(&mut sys).unwrap());
+        assert!(p.verify(&mut sys).unwrap());
+
+        p.delete(&mut sys).unwrap();
+
+        assert!(!p.has_been_created(&mut sys).unwrap());
+        assert!(!p.verify(&mut sys).unwrap());
     }
 }

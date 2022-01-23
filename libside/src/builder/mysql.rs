@@ -577,7 +577,7 @@ impl Display for CreateMySqlGrant {
 
 #[cfg(test)]
 mod tests {
-    use crate::builder::mysql::{CreateMySqlDatabase, CreateMySqlGrant, CreateMySqlUser};
+    use crate::{builder::mysql::{CreateMySqlDatabase, CreateMySqlGrant, CreateMySqlUser}, testing::LxcInstance, requirements::Requirement, system::System};
 
     #[test]
     pub fn serialize_deserialize_create_mysql_database() {
@@ -588,6 +588,30 @@ mod tests {
 
         assert_eq!(serde_json::to_string(&r).unwrap(), json);
         assert_eq!(r, serde_json::from_str(json).unwrap());
+    }
+
+    #[test]
+    #[ignore]
+    pub fn lxc_create_mysql_database() {
+        let mut sys = LxcInstance::start();
+        let p = CreateMySqlDatabase {
+            name: String::from("foo"),
+        };
+
+        sys.execute_command("apt-get", &[ "install", "-y", "mariadb-server" ]).unwrap();
+
+        assert!(!p.has_been_created(&mut sys).unwrap());
+        assert!(!p.verify(&mut sys).unwrap());
+
+        p.create(&mut sys).unwrap();
+
+        assert!(p.has_been_created(&mut sys).unwrap());
+        assert!(p.verify(&mut sys).unwrap());
+
+        // p.delete(&mut sys).unwrap();
+
+        // assert!(!p.has_been_created(&mut sys).unwrap());
+        // assert!(!p.verify(&mut sys).unwrap());
     }
 
     #[test]
@@ -603,6 +627,33 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
+    pub fn lxc_create_mysql_user() {
+        let mut sys = LxcInstance::start();
+        let p = CreateMySqlUser {
+            name: String::from("foo"),
+            pass: String::from("bar"),
+        };
+
+        sys.execute_command("apt-get", &[ "install", "-y", "mariadb-server" ]).unwrap();
+
+        assert!(!p.has_been_created(&mut sys).unwrap());
+        assert!(!p.verify(&mut sys).unwrap());
+
+        p.create(&mut sys).unwrap();
+
+        assert!(p.has_been_created(&mut sys).unwrap());
+        assert!(p.verify(&mut sys).unwrap());
+
+        assert!(sys.execute_command_with_input("mysql", &["-ufoo", "-pbar"], "SELECT 1;".as_bytes()).unwrap().is_success(), "User was not created correctly");
+
+        p.delete(&mut sys).unwrap();
+
+        assert!(!p.has_been_created(&mut sys).unwrap());
+        assert!(!p.verify(&mut sys).unwrap());
+    }
+
+    #[test]
     pub fn serialize_deserialize_create_mysql_grant() {
         let r = CreateMySqlGrant {
             user: String::from("foo"),
@@ -613,5 +664,59 @@ mod tests {
 
         assert_eq!(serde_json::to_string(&r).unwrap(), json);
         assert_eq!(r, serde_json::from_str(json).unwrap());
+    }
+
+
+    #[test]
+    #[ignore]
+    pub fn lxc_create_mysql_grant() {
+        let mut sys = LxcInstance::start();
+        let pre1 = CreateMySqlUser {
+            name: String::from("foo"),
+            pass: String::from("bar"),
+        };
+        let pre2 = CreateMySqlDatabase {
+            name: String::from("baz"),
+        };
+        let p = CreateMySqlGrant {
+            user: String::from("foo"),
+            database: String::from("baz"),
+            privileges: String::from("SELECT"),
+        };
+
+        sys.execute_command("apt-get", &[ "install", "-y", "mariadb-server" ]).unwrap();
+
+        // Check when user and db don't exist
+        assert!(!p.has_been_created(&mut sys).unwrap());
+        assert!(!p.verify(&mut sys).unwrap());
+
+        pre1.create(&mut sys).unwrap();
+
+        // Check when only user exists
+        assert!(!p.has_been_created(&mut sys).unwrap());
+        assert!(!p.verify(&mut sys).unwrap());
+
+        pre1.delete(&mut sys).unwrap();
+        pre2.create(&mut sys).unwrap();
+
+        // Check when only db exists
+        assert!(!p.has_been_created(&mut sys).unwrap());
+        assert!(!p.verify(&mut sys).unwrap());
+
+        pre1.create(&mut sys).unwrap();
+
+        // Check when both db and user exist
+        assert!(!p.has_been_created(&mut sys).unwrap());
+        assert!(!p.verify(&mut sys).unwrap());
+
+        p.create(&mut sys).unwrap();
+
+        assert!(p.has_been_created(&mut sys).unwrap());
+        assert!(p.verify(&mut sys).unwrap());
+
+        p.delete(&mut sys).unwrap();
+
+        assert!(!p.has_been_created(&mut sys).unwrap());
+        assert!(!p.verify(&mut sys).unwrap());
     }
 }

@@ -599,8 +599,7 @@ impl Display for Chmod {
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
-
-    use crate::builder::fs::{Chmod, Chown, CreateDirectory, Delete, FileWithContents, Sha3};
+    use crate::{builder::fs::{Chmod, Chown, CreateDirectory, Delete, FileWithContents, Sha3}, testing::LxcInstance, system::System, requirements::Requirement};
 
     #[test]
     pub fn serialize_deserialize_file_with_contents() {
@@ -616,6 +615,49 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
+    pub fn lxc_file_with_contents() {
+        let mut sys = LxcInstance::start();
+        let data = "Hello World".as_bytes();
+        let data2 = "Fizz Buzz".as_bytes();
+        let p = FileWithContents {
+            local_file: PathBuf::from("/foo"),
+            to: PathBuf::from("/bar"),
+            sha3: Sha3::hash(data),
+        };
+
+        assert!(!p.has_been_created(&mut sys).unwrap());
+        assert!(!p.verify(&mut sys).unwrap());
+
+        sys.execute_command_with_input("tee", &[ "/foo" ], data).unwrap();
+        sys.execute_command_with_input("tee", &[ "/baz" ], data2).unwrap();
+
+        p.create(&mut sys).unwrap();
+
+        assert!(p.has_been_created(&mut sys).unwrap());
+        assert!(p.verify(&mut sys).unwrap());
+
+        let p = FileWithContents {
+            local_file: PathBuf::from("/baz"),
+            to: PathBuf::from("/bar"),
+            sha3: Sha3::hash(data2),
+        };
+
+        assert!(p.has_been_created(&mut sys).unwrap());
+        assert!(!p.verify(&mut sys).unwrap());
+
+        p.modify(&mut sys).unwrap();
+
+        assert!(p.has_been_created(&mut sys).unwrap());
+        assert!(p.verify(&mut sys).unwrap());
+
+        p.delete(&mut sys).unwrap();
+
+        assert!(!p.has_been_created(&mut sys).unwrap());
+        assert!(!p.verify(&mut sys).unwrap());
+    }
+
+    #[test]
     pub fn serialize_deserialize_create_directory() {
         let r = CreateDirectory {
             path: PathBuf::from("/foo/bar/baz"),
@@ -628,6 +670,29 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
+    pub fn lxc_create_directory() {
+        let mut sys = LxcInstance::start();
+        let p = CreateDirectory {
+            path: PathBuf::from("/foo"),
+            needs_cleanup: true,
+        };
+
+        assert!(!p.has_been_created(&mut sys).unwrap());
+        assert!(!p.verify(&mut sys).unwrap());
+
+        p.create(&mut sys).unwrap();
+
+        assert!(p.has_been_created(&mut sys).unwrap());
+        assert!(p.verify(&mut sys).unwrap());
+
+        p.delete(&mut sys).unwrap();
+
+        assert!(!p.has_been_created(&mut sys).unwrap());
+        assert!(!p.verify(&mut sys).unwrap());
+    }
+
+    #[test]
     pub fn serialize_deserialize_delete() {
         let r = Delete {
             path: PathBuf::from("/foo/bar/baz"),
@@ -637,6 +702,36 @@ mod tests {
 
         assert_eq!(serde_json::to_string(&r).unwrap(), json);
         assert_eq!(r, serde_json::from_str(json).unwrap());
+    }
+
+    #[test]
+    #[ignore]
+    pub fn lxc_delete() {
+        let mut sys = LxcInstance::start();
+        // needs_cleanup: true
+        let p = Delete {
+            path: PathBuf::from("/foo"),
+            copy_to: PathBuf::from("/bar"),
+        };
+        let data = "Hello World".as_bytes();
+
+        sys.execute_command_with_input("tee", &[ "/foo" ], data).unwrap();
+
+        assert!(!p.has_been_created(&mut sys).unwrap());
+        assert!(!p.verify(&mut sys).unwrap());
+
+        p.create(&mut sys).unwrap();
+
+        assert!(!sys.path_exists(&PathBuf::from("/foo")).unwrap());
+
+        assert!(p.has_been_created(&mut sys).unwrap());
+        assert!(p.verify(&mut sys).unwrap());
+
+        p.delete(&mut sys).unwrap();
+
+        assert!(!p.has_been_created(&mut sys).unwrap());
+        assert!(!p.verify(&mut sys).unwrap());
+        assert_eq!(sys.file_contents(&PathBuf::from("/foo")).unwrap(), data);
     }
 
     #[test]

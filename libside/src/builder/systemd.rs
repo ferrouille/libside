@@ -705,7 +705,7 @@ impl Display for EnableService {
 
 #[cfg(test)]
 mod tests {
-    use crate::builder::systemd::{EnableService, InstallServices, ServiceRunning};
+    use crate::{builder::systemd::{EnableService, InstallServices, ServiceRunning}, testing::LxcInstance, system::System, requirements::Requirement};
 
     #[test]
     pub fn serialize_deserialize_service_running() {
@@ -719,12 +719,47 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
+    pub fn lxc_service_running() {
+        let mut sys = LxcInstance::start();
+        let p = ServiceRunning {
+            name: String::from("nginx"),
+        };
+
+        sys.execute_command("apt-get", &[ "install", "-y", "nginx" ]).unwrap();
+
+        assert!(p.has_been_created(&mut sys).unwrap());
+        assert!(p.verify(&mut sys).unwrap());
+
+        p.delete(&mut sys).unwrap();
+
+        assert!(!p.has_been_created(&mut sys).unwrap());
+        assert!(!p.verify(&mut sys).unwrap());
+
+        p.create(&mut sys).unwrap();
+
+        assert!(p.has_been_created(&mut sys).unwrap());
+        assert!(p.verify(&mut sys).unwrap());
+    }
+
+    #[test]
     pub fn serialize_deserialize_install_services() {
         let r = InstallServices;
         let json = r#"null"#;
 
         assert_eq!(serde_json::to_string(&r).unwrap(), json);
         assert_eq!(r, serde_json::from_str(json).unwrap());
+    }
+
+    #[test]
+    #[ignore]
+    pub fn lxc_install_services() {
+        let mut sys = LxcInstance::start();
+        let p = InstallServices;
+
+        p.create(&mut sys).unwrap();
+        p.modify(&mut sys).unwrap();
+        p.delete(&mut sys).unwrap();
     }
 
     #[test]
@@ -737,5 +772,50 @@ mod tests {
 
         assert_eq!(serde_json::to_string(&r).unwrap(), json);
         assert_eq!(r, serde_json::from_str(json).unwrap());
+    }
+
+    #[test]
+    #[ignore]
+    pub fn lxc_enable_service() {
+        let mut sys = LxcInstance::start();
+        // disable: false
+        let p = EnableService {
+            name: String::from("nginx"),
+            disable: false,
+        };
+
+        sys.execute_command("apt-get", &[ "install", "-y", "nginx" ]).unwrap();
+
+        assert!(p.has_been_created(&mut sys).unwrap());
+        assert!(p.verify(&mut sys).unwrap());
+
+        p.delete(&mut sys).unwrap();
+
+        assert!(!p.has_been_created(&mut sys).unwrap());
+        assert!(!p.verify(&mut sys).unwrap());
+
+        p.create(&mut sys).unwrap();
+
+        assert!(p.has_been_created(&mut sys).unwrap());
+        assert!(p.verify(&mut sys).unwrap());
+
+        // disable: true
+        let p = EnableService {
+            name: String::from("nginx"),
+            disable: true,
+        };
+
+        assert!(!p.has_been_created(&mut sys).unwrap());
+        assert!(!p.verify(&mut sys).unwrap());
+
+        p.create(&mut sys).unwrap();
+
+        assert!(p.has_been_created(&mut sys).unwrap());
+        assert!(p.verify(&mut sys).unwrap());
+
+        p.delete(&mut sys).unwrap();
+
+        assert!(!p.has_been_created(&mut sys).unwrap());
+        assert!(!p.verify(&mut sys).unwrap());
     }
 }
