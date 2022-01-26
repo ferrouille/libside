@@ -155,7 +155,7 @@ impl Display for AptInstall {
 
 #[cfg(test)]
 mod tests {
-    use crate::{builder::apt::AptInstall, testing::LxcInstance, requirements::Requirement};
+    use crate::{builder::apt::AptInstall, requirements::Requirement, testing::LxcInstance};
 
     #[test]
     pub fn serialize_deserialize_apt_install() {

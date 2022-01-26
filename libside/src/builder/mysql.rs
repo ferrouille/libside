@@ -587,7 +587,12 @@ impl Display for CreateMySqlGrant {
 
 #[cfg(test)]
 mod tests {
-    use crate::{builder::mysql::{CreateMySqlDatabase, CreateMySqlGrant, CreateMySqlUser}, testing::LxcInstance, requirements::Requirement, system::System};
+    use crate::{
+        builder::mysql::{CreateMySqlDatabase, CreateMySqlGrant, CreateMySqlUser},
+        requirements::Requirement,
+        system::System,
+        testing::LxcInstance,
+    };
 
     #[test]
     pub fn serialize_deserialize_create_mysql_database() {
@@ -608,7 +613,8 @@ mod tests {
             name: String::from("foo"),
         };
 
-        sys.execute_command("apt-get", &[ "install", "-y", "mariadb-server" ]).unwrap();
+        sys.execute_command("apt-get", &["install", "-y", "mariadb-server"])
+            .unwrap();
 
         assert!(!p.has_been_created(&mut sys).unwrap());
         assert!(!p.verify(&mut sys).unwrap());
@@ -645,7 +651,8 @@ mod tests {
             pass: String::from("bar"),
         };
 
-        sys.execute_command("apt-get", &[ "install", "-y", "mariadb-server" ]).unwrap();
+        sys.execute_command("apt-get", &["install", "-y", "mariadb-server"])
+            .unwrap();
 
         assert!(!p.has_been_created(&mut sys).unwrap());
         assert!(!p.verify(&mut sys).unwrap());
@@ -655,7 +662,12 @@ mod tests {
         assert!(p.has_been_created(&mut sys).unwrap());
         assert!(p.verify(&mut sys).unwrap());
 
-        assert!(sys.execute_command_with_input("mysql", &["-ufoo", "-pbar"], "SELECT 1;".as_bytes()).unwrap().is_success(), "User was not created correctly");
+        assert!(
+            sys.execute_command_with_input("mysql", &["-ufoo", "-pbar"], "SELECT 1;".as_bytes())
+                .unwrap()
+                .is_success(),
+            "User was not created correctly"
+        );
 
         p.delete(&mut sys).unwrap();
 
@@ -676,7 +688,6 @@ mod tests {
         assert_eq!(r, serde_json::from_str(json).unwrap());
     }
 
-
     #[test]
     #[ignore]
     pub fn lxc_create_mysql_grant() {
@@ -694,7 +705,8 @@ mod tests {
             privileges: String::from("SELECT"),
         };
 
-        sys.execute_command("apt-get", &[ "install", "-y", "mariadb-server" ]).unwrap();
+        sys.execute_command("apt-get", &["install", "-y", "mariadb-server"])
+            .unwrap();
 
         // Check when user and db don't exist
         assert!(!p.has_been_created(&mut sys).unwrap());

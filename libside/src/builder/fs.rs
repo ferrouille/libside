@@ -598,8 +598,13 @@ impl Display for Chmod {
 
 #[cfg(test)]
 mod tests {
+    use crate::{
+        builder::fs::{Chmod, Chown, CreateDirectory, Delete, FileWithContents, Sha3},
+        requirements::Requirement,
+        system::System,
+        testing::LxcInstance,
+    };
     use std::path::PathBuf;
-    use crate::{builder::fs::{Chmod, Chown, CreateDirectory, Delete, FileWithContents, Sha3}, testing::LxcInstance, system::System, requirements::Requirement};
 
     #[test]
     pub fn serialize_deserialize_file_with_contents() {
@@ -629,8 +634,10 @@ mod tests {
         assert!(!p.has_been_created(&mut sys).unwrap());
         assert!(!p.verify(&mut sys).unwrap());
 
-        sys.execute_command_with_input("tee", &[ "/foo" ], data).unwrap();
-        sys.execute_command_with_input("tee", &[ "/baz" ], data2).unwrap();
+        sys.execute_command_with_input("tee", &["/foo"], data)
+            .unwrap();
+        sys.execute_command_with_input("tee", &["/baz"], data2)
+            .unwrap();
 
         p.create(&mut sys).unwrap();
 
@@ -715,7 +722,8 @@ mod tests {
         };
         let data = "Hello World".as_bytes();
 
-        sys.execute_command_with_input("tee", &[ "/foo" ], data).unwrap();
+        sys.execute_command_with_input("tee", &["/foo"], data)
+            .unwrap();
 
         assert!(!p.has_been_created(&mut sys).unwrap());
         assert!(!p.verify(&mut sys).unwrap());

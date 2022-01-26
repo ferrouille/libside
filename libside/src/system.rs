@@ -123,7 +123,10 @@ impl System for LocalSystem {
     }
 }
 
-pub(crate) fn handle_process_io(mut child: std::process::Child, input: &[u8]) -> Result<CommandResult, io::Error> {
+pub(crate) fn handle_process_io(
+    mut child: std::process::Child,
+    input: &[u8],
+) -> Result<CommandResult, io::Error> {
     // TODO: This may propagate an error that we should handle (i.e. blocking reads return an error)
     let mut stdin_stream = child.stdin.take();
     let mut stdout_stream = child.stdout.take().unwrap();

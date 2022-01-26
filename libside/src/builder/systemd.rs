@@ -138,26 +138,32 @@ impl SystemdService {
         context: &mut Context<R>,
         override_name: &str,
         data: ServiceData,
-    ) where
+        dependencies: impl IntoIterator<Item = GraphNodeReference>,
+    ) -> GraphNodeReference
+    where
         R: Supports<CreateDirectory> + Supports<FileWithContents> + Supports<InstallServices>,
     {
         let override_dir = self.override_dir.get_or_insert_with(|| {
             let dir = context.existing("/etc/systemd/system/");
             dir.make_dir(context, format!("{}.service.d", self.name))
         });
+        let mut extra_dependencies = vec![self.file_dependency];
+        extra_dependencies.extend(dependencies);
         let override_file = ConfigFileData {
             path: override_dir
                 .join(format!("{}.conf", override_name))
                 .full_path(),
             contents: data.to_vec().unwrap(),
             path_dependency: override_dir.node,
-            extra_dependencies: vec![self.file_dependency],
+            extra_dependencies,
         }
         .create(context);
         let reload = InstallServices::run(context, &[override_file.node.unwrap()]);
 
         self.start_dependencies.push(reload);
         self.start_dependencies.extend(data.dependencies().copied());
+
+        reload
     }
 
     pub fn add_start_dependencies<I: IntoIterator<Item = GraphNodeReference>>(&mut self, dep: I) {
@@ -349,7 +355,9 @@ impl TimerData {
     }
 }
 
-fn _true() -> bool { true }
+fn _true() -> bool {
+    true
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ServiceRunning {
@@ -378,7 +386,7 @@ impl ServiceRunning {
         )
     }
 
-    /// Require service to be running. 
+    /// Require service to be running.
     /// Use this function when no new configuration has been added, meaning a restart isn't necessary.
     pub fn is_running<U: SystemdUnit, R: Requirement + Supports<ServiceRunning>>(
         context: &mut Context<R>,
@@ -764,7 +772,12 @@ impl Display for EnableService {
 
 #[cfg(test)]
 mod tests {
-    use crate::{builder::systemd::{EnableService, InstallServices, ServiceRunning}, testing::LxcInstance, system::System, requirements::Requirement};
+    use crate::{
+        builder::systemd::{EnableService, InstallServices, ServiceRunning},
+        requirements::Requirement,
+        system::System,
+        testing::LxcInstance,
+    };
 
     #[test]
     pub fn serialize_deserialize_service_running() {
@@ -793,7 +806,8 @@ mod tests {
             oneshot: false,
         };
 
-        sys.execute_command("apt-get", &[ "install", "-y", "nginx" ]).unwrap();
+        sys.execute_command("apt-get", &["install", "-y", "nginx"])
+            .unwrap();
 
         assert!(p.has_been_created(&mut sys).unwrap());
         assert!(p.verify(&mut sys).unwrap());
@@ -815,7 +829,12 @@ mod tests {
 
         let result = sys.execute_command("pidof", &["nginx"]).unwrap();
         let pid2 = result.stdout_as_str();
-        assert!(pid1 != pid2, "The service was not restarted (pid1 = {}, pid2 = {}), but must_restart = true", pid1, pid2);
+        assert!(
+            pid1 != pid2,
+            "The service was not restarted (pid1 = {}, pid2 = {}), but must_restart = true",
+            pid1,
+            pid2
+        );
 
         // must_restart: false, oneshot: false
         let p = ServiceRunning {
@@ -844,7 +863,12 @@ mod tests {
 
         let result = sys.execute_command("pidof", &["nginx"]).unwrap();
         let pid2 = result.stdout_as_str();
-        assert!(pid1 == pid2, "The service was restarted (pid1 = {}, pid2 = {}), but must_restart = false", pid1, pid2);
+        assert!(
+            pid1 == pid2,
+            "The service was restarted (pid1 = {}, pid2 = {}), but must_restart = false",
+            pid1,
+            pid2
+        );
 
         // must_restart: false, oneshot: true
         let p = ServiceRunning {
@@ -909,7 +933,8 @@ mod tests {
             disable: false,
         };
 
-        sys.execute_command("apt-get", &[ "install", "-y", "nginx" ]).unwrap();
+        sys.execute_command("apt-get", &["install", "-y", "nginx"])
+            .unwrap();
 
         assert!(p.has_been_created(&mut sys).unwrap());
         assert!(p.verify(&mut sys).unwrap());

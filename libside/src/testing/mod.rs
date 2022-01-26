@@ -1,7 +1,10 @@
-use std::{process::{Command, Stdio}, sync::Mutex};
-use rand::{prelude::*, distributions::Alphanumeric};
-use crate::system::{System, handle_process_io};
+use crate::system::{handle_process_io, System};
 use lazy_static::lazy_static;
+use rand::{distributions::Alphanumeric, prelude::*};
+use std::{
+    process::{Command, Stdio},
+    sync::Mutex,
+};
 
 lazy_static! {
     static ref LOCK: Mutex<()> = Mutex::new(());
@@ -16,7 +19,8 @@ impl LxcInstance {
     pub fn start() -> LxcInstance {
         // Make sure we don't launch multiple VMs at the same time because that somehow causes crashes.
         let guard = LOCK.lock().unwrap();
-        let name = format!("side-test-{}",
+        let name = format!(
+            "side-test-{}",
             rand::thread_rng()
                 .sample_iter(&Alphanumeric)
                 .take(7)
@@ -32,13 +36,16 @@ impl LxcInstance {
             .output()
             .unwrap();
         drop(guard);
-        
-        assert!(result.status.success(), "lxc launch failed: {}{}", std::str::from_utf8(&result.stdout).unwrap(), std::str::from_utf8(&result.stderr).unwrap());
+
+        assert!(
+            result.status.success(),
+            "lxc launch failed: {}{}",
+            std::str::from_utf8(&result.stdout).unwrap(),
+            std::str::from_utf8(&result.stderr).unwrap()
+        );
 
         println!("lxc instance started as {}", name);
-        let inst = LxcInstance {
-            name,
-        };
+        let inst = LxcInstance { name };
         inst.wait_until_ready();
 
         println!("Ready");
@@ -69,7 +76,7 @@ impl Drop for LxcInstance {
             .arg(&self.name)
             .output()
             .unwrap();
-        
+
         Command::new("lxc")
             .arg("delete")
             .arg(&self.name)
@@ -88,14 +95,14 @@ impl System for LxcInstance {
 
     fn path_exists(&self, path: &std::path::Path) -> Result<bool, Self::Error> {
         let path = path.as_os_str().to_str().unwrap();
-        let result = self.execute_command("/usr/bin/[", &[ "-e", path, "]" ])?;
+        let result = self.execute_command("/usr/bin/[", &["-e", path, "]"])?;
 
         Ok(result.is_success())
     }
 
     fn file_contents(&self, path: &std::path::Path) -> Result<Vec<u8>, Self::Error> {
         let path = path.as_os_str().to_str().unwrap();
-        let result = self.execute_command("/usr/bin/cat", &[ path ])?;
+        let result = self.execute_command("/usr/bin/cat", &[path])?;
 
         Ok(result.stdout().to_vec())
     }
@@ -129,10 +136,14 @@ impl System for LxcInstance {
         Ok(handle_process_io(child, input).unwrap())
     }
 
-    fn copy_file(&mut self, from: &std::path::Path, to: &std::path::Path) -> Result<(), Self::Error> {
+    fn copy_file(
+        &mut self,
+        from: &std::path::Path,
+        to: &std::path::Path,
+    ) -> Result<(), Self::Error> {
         let from = from.as_os_str().to_str().unwrap();
         let to = to.as_os_str().to_str().unwrap();
-        let result = self.execute_command("/usr/bin/cp", &[ from, to ])?;
+        let result = self.execute_command("/usr/bin/cp", &[from, to])?;
 
         assert!(result.is_success());
 
@@ -141,7 +152,7 @@ impl System for LxcInstance {
 
     fn make_dir(&mut self, path: &std::path::Path) -> Result<(), Self::Error> {
         let path = path.as_os_str().to_str().unwrap();
-        let result = self.execute_command("/usr/bin/mkdir", &[ path ])?;
+        let result = self.execute_command("/usr/bin/mkdir", &[path])?;
 
         assert!(result.is_success());
 
@@ -150,7 +161,7 @@ impl System for LxcInstance {
 
     fn remove_dir(&mut self, path: &std::path::Path) -> Result<(), Self::Error> {
         let path = path.as_os_str().to_str().unwrap();
-        let result = self.execute_command("/usr/bin/rmdir", &[ path ])?;
+        let result = self.execute_command("/usr/bin/rmdir", &[path])?;
 
         assert!(result.is_success());
 
@@ -159,7 +170,7 @@ impl System for LxcInstance {
 
     fn remove_file(&mut self, path: &std::path::Path) -> Result<(), Self::Error> {
         let path = path.as_os_str().to_str().unwrap();
-        let result = self.execute_command("/usr/bin/rm", &[ path ])?;
+        let result = self.execute_command("/usr/bin/rm", &[path])?;
 
         assert!(result.is_success());
 
@@ -167,19 +178,15 @@ impl System for LxcInstance {
     }
 
     fn get_user(&mut self, name: &str) -> Result<Option<()>, Self::Error> {
-        let result = self.execute_command("/usr/bin/id", &[ name ])?;
+        let result = self.execute_command("/usr/bin/id", &[name])?;
 
-        Ok(if result.is_success() {
-            Some(())
-        } else {
-            None
-        })
+        Ok(if result.is_success() { Some(()) } else { None })
     }
 
     fn chmod(&mut self, path: &std::path::Path, mode: u32) -> Result<(), Self::Error> {
         let mode = format!("{:o}", mode);
         let path = path.as_os_str().to_str().unwrap();
-        let result = self.execute_command("/usr/bin/chmod", &[ &mode, path ])?;
+        let result = self.execute_command("/usr/bin/chmod", &[&mode, path])?;
 
         assert!(result.is_success());
 

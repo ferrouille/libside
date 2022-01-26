@@ -23,8 +23,8 @@ pub mod graph;
 pub mod requirements;
 pub mod secrets;
 pub mod system;
-pub mod utils;
 pub mod testing;
+pub mod utils;
 
 #[derive(Debug, thiserror::Error)]
 pub enum RunError<S: System, B: Builder> {
