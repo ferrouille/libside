@@ -7,6 +7,7 @@ use requirements::{Requirement, Supports};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
     fs::{self, File},
+    io::BufRead,
     num::ParseIntError,
     os::unix::prelude::PermissionsExt,
     path::{Path, PathBuf},
@@ -347,9 +348,21 @@ pub struct SiDe {}
 pub enum Command {
     Init,
     Status,
-    Build,
+    Build {
+        #[structopt(long = "ignore-verification")]
+        ignore_verification: bool,
+
+        #[structopt(long = "ask-overwrite")]
+        ask_overwrite: bool,
+    },
     Apply {
         target: u64,
+
+        #[structopt(long = "ignore-verification")]
+        ignore_verification: bool,
+
+        #[structopt(long = "ask-overwrite")]
+        ask_overwrite: bool,
     },
     Verify {
         #[structopt(long = "fix")]
@@ -402,17 +415,25 @@ impl SiDe {
 
                 Ok(())
             }
-            Command::Apply { target } => {
+            Command::Apply {
+                target,
+                ignore_verification,
+                ask_overwrite,
+            } => {
                 let current = dirs.current_install().unwrap();
                 let target = dirs.get_install(target);
                 let current_state = current.load_install::<B::Requirement>();
                 let target_state = target.load_install::<B::Requirement>();
 
-                println!("Verifying current state...");
-                match current_state.verify_system_state(&mut LocalSystem).unwrap() {
-                    VerificationState::Ok => println!("Verification OK"),
-                    err @ VerificationState::Invalid { .. } => {
-                        panic!("Verification failed:\n{}", err)
+                if ignore_verification {
+                    println!("Skipping verification of current state...");
+                } else {
+                    println!("Verifying current state...");
+                    match current_state.verify_system_state(&mut LocalSystem).unwrap() {
+                        VerificationState::Ok => println!("Verification OK"),
+                        err @ VerificationState::Invalid { .. } => {
+                            panic!("Verification failed:\n{}", err)
+                        }
                     }
                 }
 
@@ -429,7 +450,15 @@ impl SiDe {
 
                 // The result returned by run describes which requirements were pre-existing;
                 // That's not relevant to us, because we want to keep the original values that we determined when we created this install.
-                match instructions.run(&mut LocalSystem) {
+                match instructions.run(&mut LocalSystem, |s| {
+                    if ask_overwrite {
+                        println!("Can {} be overwritten? Type 'yes' to continue or anything else to abort", s);
+                        let line = std::io::stdin().lock().lines().next().unwrap().unwrap();
+                        return line.trim() == "yes";
+                    }
+
+                    return false;
+                }) {
                     Ok(_) => {}
                     Err(err) => {
                         println!();
@@ -450,14 +479,22 @@ impl SiDe {
 
                 Ok(())
             }
-            Command::Build => {
+            Command::Build {
+                ignore_verification,
+                ask_overwrite,
+            } => {
                 let current = dirs.current_install().unwrap();
                 let current_state = current.load_install::<B::Requirement>();
-                println!("Verifying current state...");
-                match current_state.verify_system_state(&mut LocalSystem).unwrap() {
-                    VerificationState::Ok => println!("Verification OK"),
-                    err @ VerificationState::Invalid { .. } => {
-                        panic!("Verification failed:\n{}", err)
+
+                if ignore_verification {
+                    println!("Skipping verification of current state...");
+                } else {
+                    println!("Verifying current state...");
+                    match current_state.verify_system_state(&mut LocalSystem).unwrap() {
+                        VerificationState::Ok => println!("Verification OK"),
+                        err @ VerificationState::Invalid { .. } => {
+                            panic!("Verification failed:\n{}", err)
+                        }
                     }
                 }
 
@@ -478,7 +515,15 @@ impl SiDe {
                 let instructions = cmp
                     .generate_application_sequence(&mut LocalSystem)
                     .map_err(BuildError::ApplicationSequenceGenerationFailed)?;
-                match instructions.run(&mut LocalSystem) {
+                match instructions.run(&mut LocalSystem, |s| {
+                    if ask_overwrite {
+                        println!("Can {} be overwritten? Type 'yes' to continue or anything else to abort", s);
+                        let line = std::io::stdin().lock().lines().next().unwrap().unwrap();
+                        return line.trim() == "yes";
+                    }
+
+                    return false;
+                }) {
                     Ok(result) => {
                         let _new_state = prepared.save(result).map_err(BuildError::SaveError)?;
                         dirs.set_current_install(&new_install)
@@ -517,7 +562,7 @@ impl SiDe {
 
                             // The result returned by run describes which requirements were pre-existing;
                             // That's not relevant to us, because we want to keep the original values that we determined when we created this install.
-                            let _ = seq.run(&mut LocalSystem).unwrap();
+                            let _ = seq.run(&mut LocalSystem, |_| false).unwrap();
 
                             println!("Fixing successful!");
                         }

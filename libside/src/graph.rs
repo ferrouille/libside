@@ -380,7 +380,11 @@ pub struct RevertInfo {
 
 impl<'r, R: Requirement> ApplySequence<'r, R> {
     #[must_use]
-    pub fn run<S: System>(&self, system: &mut S) -> Result<ApplyResult, RunError<R, S>> {
+    pub fn run<S: System>(
+        &self,
+        system: &mut S,
+        ask_overwrite: impl Fn(&str) -> bool,
+    ) -> Result<ApplyResult, RunError<R, S>> {
         let mut result = ApplyResult {
             pre_existing: Vec::new(),
         };
@@ -409,14 +413,16 @@ impl<'r, R: Requirement> ApplySequence<'r, R> {
                 Ok(has_been_created) => {
                     if has_been_created {
                         if !entry.should_exist && !r.may_pre_exist() {
-                            return Err(RunError {
-                                requirement: entry.requirement.clone(),
-                                revert_info: RevertInfo {
-                                    position: Position::Todo(index),
-                                    pre_existing: result.pre_existing.clone(),
-                                },
-                                inner: RequirementOperationError::PreExisting,
-                            });
+                            if !ask_overwrite(&format!("{}", r)) {
+                                return Err(RunError {
+                                    requirement: entry.requirement.clone(),
+                                    revert_info: RevertInfo {
+                                        position: Position::Todo(index),
+                                        pre_existing: result.pre_existing.clone(),
+                                    },
+                                    inner: RequirementOperationError::PreExisting,
+                                });
+                            }
                         }
 
                         if !entry.created_by_us {
@@ -489,7 +495,7 @@ impl<'r, R: Requirement> ApplySequence<'r, R> {
         }
 
         let fix_sequence = self.prev.generate_fix_sequence(system).unwrap();
-        let _ = fix_sequence.run(system).unwrap();
+        let _ = fix_sequence.run(system, |_| false).unwrap();
 
         Ok(())
     }
@@ -1091,7 +1097,7 @@ mod tests {
 
         let cmp = v1.compare_with(&mut sys, &v0).unwrap();
         let seq = cmp.generate_application_sequence(&mut sys).unwrap();
-        let results = seq.run(&mut sys).unwrap();
+        let results = seq.run(&mut sys, |_| false).unwrap();
         let v1 = v1.apply_execution_results(results);
 
         assert_eq!(
@@ -1118,7 +1124,7 @@ mod tests {
 
         let cmp = v2.compare_with(&mut sys, &v1).unwrap();
         let seq = cmp.generate_application_sequence(&mut sys).unwrap();
-        let results = seq.run(&mut sys).unwrap();
+        let results = seq.run(&mut sys, |_| false).unwrap();
         let _v2 = v2.apply_execution_results(results);
 
         assert_eq!(
@@ -1155,7 +1161,7 @@ mod tests {
 
         let cmp = v1.compare_with(&mut sys, &v0).unwrap();
         let seq = cmp.generate_application_sequence(&mut sys).unwrap();
-        let results = seq.run(&mut sys).unwrap();
+        let results = seq.run(&mut sys, |_| false).unwrap();
         let v1 = v1.apply_execution_results(results);
 
         assert_eq!(
@@ -1183,7 +1189,7 @@ mod tests {
 
         let cmp = v2.compare_with(&mut sys, &v1).unwrap();
         let seq = cmp.generate_application_sequence(&mut sys).unwrap();
-        let err = seq.run(&mut sys).unwrap_err();
+        let err = seq.run(&mut sys, |_| false).unwrap_err();
         println!("Apply failed successfully");
         println!("System state: {:?}", sys);
         seq.revert(&mut sys, &err.revert_info).unwrap();
