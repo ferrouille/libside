@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::process::exit;
 use std::time::Duration;
 
-use libside::builder::apt::{AptInstall, AptPackage};
+use libside::builder::apt::{Apt, AptInstall, AptPackage, AptUpdate};
 use libside::builder::fs::*;
 use libside::builder::mysql::*;
 use libside::builder::nginx::Nginx;
@@ -116,7 +116,7 @@ impl BackupData {
 impl MySqlData {
     pub fn create<R: Requirement>(context: &mut Context<R>) -> MySqlData
     where
-        R: Supports<AptInstall> + Supports<ServiceRunning>,
+        R: Supports<AptInstall> + Supports<AptUpdate>,
     {
         let mysql = MariaDb::install(context);
 
@@ -148,6 +148,7 @@ impl Builder for Demo {
         CreateUser,
         CreateGroup,
         AptInstall,
+        AptUpdate,
         ServiceRunning,
         CreateMySqlDatabase,
         CreateMySqlUser,
@@ -169,9 +170,12 @@ impl Builder for Demo {
         let nginx_sites = nginx_config_dir.make_dir(context, "sites");
 
         let dpkg_dir = context.existing("/etc/dpkg/dpkg.cfg.d/");
-        config_file!("demo-data/dpkg/01_nodoc")
+        let dpkg_config = config_file!("demo-data/dpkg/01_nodoc")
             .in_dir(&dpkg_dir)
             .create(context);
+
+        // Make sure the file is installed before any apt-get commands are run
+        Apt::global_precondition(context, dpkg_config.graph_node().unwrap());
 
         let fpm_socks_group = Group::add(context, "fpm-socks", true);
         let nginx_user = User::add(context, "nginx-www", |c| c.add_group(&fpm_socks_group));

@@ -25,6 +25,19 @@ macro_rules! generic_apt_package {
     }
 }
 
+#[derive(Default)]
+pub struct Apt {
+    update: Option<GraphNodeReference>,
+    global_preconditions: Vec<GraphNodeReference>,
+}
+
+impl Apt {
+    pub fn global_precondition<R: Requirement>(context: &mut Context<R>, node: GraphNodeReference) {
+        let state = context.state::<Apt>();
+        state.global_preconditions.push(node);
+    }
+}
+
 pub trait AptPackage {
     const NAME: &'static str;
 
@@ -32,11 +45,23 @@ pub trait AptPackage {
 
     fn graph_node(&self) -> GraphNodeReference;
 
-    fn install<R: Requirement + Supports<AptInstall>>(context: &mut Context<R>) -> Self
+    fn install<R: Requirement + Supports<AptInstall> + Supports<AptUpdate>>(
+        context: &mut Context<R>,
+    ) -> Self
     where
         Self: Sized,
     {
-        Self::create(context.add_node(AptInstall::new(Self::NAME), &[]))
+        if context.state::<Apt>().update.is_none() {
+            context.state::<Apt>().update = Some(context.add_node(AptUpdate, &[]));
+        }
+        let state = context.state::<Apt>();
+        let updated = state.update;
+        let dependencies = updated
+            .iter()
+            .chain(state.global_preconditions.iter())
+            .copied()
+            .collect::<Vec<_>>();
+        Self::create(context.add_node(AptInstall::new(Self::NAME), dependencies.iter()))
     }
 }
 
@@ -153,9 +178,77 @@ impl Display for AptInstall {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AptUpdate;
+
+#[derive(Debug, thiserror::Error)]
+#[error("unable to execute apt-get: {0}")]
+pub struct UpdateError<S: System>(S::CommandError);
+
+impl Requirement for AptUpdate {
+    const NAME: &'static str = "apt_update";
+
+    type CreateError<S: System> = UpdateError<S>;
+    type ModifyError<S: System> = UpdateError<S>;
+    type DeleteError<S: System> = NeverError;
+    type HasBeenCreatedError<S: System> = NeverError;
+
+    fn create<S: System>(&self, system: &mut S) -> Result<(), Self::CreateError<S>> {
+        system
+            .execute_command("apt-get", &["update"])
+            .map_err(UpdateError)
+            .map(|_| ())
+    }
+
+    fn modify<S: System>(&self, system: &mut S) -> Result<(), Self::ModifyError<S>> {
+        self.create(system)
+    }
+
+    fn delete<S: System>(&self, _system: &mut S) -> Result<(), Self::DeleteError<S>> {
+        Ok(())
+    }
+
+    fn has_been_created<S: System>(
+        &self,
+        _system: &mut S,
+    ) -> Result<bool, Self::HasBeenCreatedError<S>> {
+        Ok(true)
+    }
+
+    fn affects(&self, _other: &Self) -> bool {
+        true
+    }
+
+    fn supports_modifications(&self) -> bool {
+        true
+    }
+
+    fn can_undo(&self) -> bool {
+        false
+    }
+
+    fn may_pre_exist(&self) -> bool {
+        true
+    }
+
+    fn verify<S: System>(&self, _system: &mut S) -> Result<bool, ()> {
+        Ok(true)
+    }
+}
+
+impl Display for AptUpdate {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "apt-update")
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::{builder::apt::AptInstall, requirements::Requirement, testing::LxcInstance};
+    use crate::{
+        builder::apt::{AptInstall, AptUpdate},
+        requirements::Requirement,
+        testing::LxcInstance,
+    };
 
     #[test]
     pub fn serialize_deserialize_apt_install() {
@@ -163,6 +256,15 @@ mod tests {
             name: "test".to_string(),
         };
         let json = r#"{"name":"test"}"#;
+
+        assert_eq!(serde_json::to_string(&r).unwrap(), json);
+        assert_eq!(r, serde_json::from_str(json).unwrap());
+    }
+
+    #[test]
+    pub fn serialize_deserialize_apt_update() {
+        let r = AptUpdate;
+        let json = r#"null"#;
 
         assert_eq!(serde_json::to_string(&r).unwrap(), json);
         assert_eq!(r, serde_json::from_str(json).unwrap());
@@ -188,5 +290,16 @@ mod tests {
 
         assert!(!p.has_been_created(&mut sys).unwrap());
         assert!(!p.verify(&mut sys).unwrap());
+    }
+
+    #[test]
+    #[ignore]
+    pub fn lxc_apt_update() {
+        let mut sys = LxcInstance::start();
+        let p = AptUpdate;
+
+        p.create(&mut sys).unwrap();
+        p.modify(&mut sys).unwrap();
+        p.delete(&mut sys).unwrap();
     }
 }
