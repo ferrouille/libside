@@ -15,7 +15,11 @@ pub trait System: std::fmt::Debug {
 
     fn path_exists(&self, path: &Path) -> Result<bool, Self::Error>;
 
+    fn path_is_dir(&self, path: &Path) -> Result<bool, Self::Error>;
+
     fn file_contents(&self, path: &Path) -> Result<Vec<u8>, Self::Error>;
+
+    fn put_file_contents(&self, path: &Path, contents: &[u8]) -> Result<(), Self::Error>;
 
     fn execute_command(
         &self,
@@ -34,6 +38,14 @@ pub trait System: std::fmt::Debug {
 
     fn make_dir(&mut self, path: &Path) -> Result<(), Self::Error>;
 
+    fn make_dir_all(&mut self, path: &Path) -> Result<(), Self::Error>;
+
+    fn dir_is_empty(&mut self, path: &Path) -> Result<bool, Self::Error> {
+        Ok(self.read_dir(path)?.is_empty())
+    }
+
+    fn read_dir(&mut self, path: &Path) -> Result<Vec<String>, Self::Error>;
+
     fn remove_dir(&mut self, path: &Path) -> Result<(), Self::Error>;
 
     fn remove_file(&mut self, path: &Path) -> Result<(), Self::Error>;
@@ -51,7 +63,6 @@ impl System for LocalSystem {
     type CommandError = io::Error;
 
     fn path_exists(&self, path: &Path) -> Result<bool, Self::Error> {
-        // TODO: Distinguish between directory and file
         match fs::symlink_metadata(path) {
             Ok(_) => Ok(true),
             Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
@@ -59,8 +70,20 @@ impl System for LocalSystem {
         }
     }
 
+    fn path_is_dir(&self, path: &Path) -> Result<bool, Self::Error> {
+        match fs::symlink_metadata(path) {
+            Ok(metadata) => Ok(metadata.is_dir()),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+
     fn file_contents(&self, path: &Path) -> Result<Vec<u8>, Self::Error> {
         Ok(fs::read(path)?)
+    }
+
+    fn put_file_contents(&self, path: &Path, contents: &[u8]) -> Result<(), Self::Error> {
+        Ok(fs::write(path, contents)?)
     }
 
     fn execute_command(&self, path: &str, args: &[&str]) -> Result<CommandResult, Self::Error> {
@@ -81,6 +104,15 @@ impl System for LocalSystem {
     fn make_dir(&mut self, path: &Path) -> Result<(), Self::Error> {
         fs::create_dir(path)?;
         Ok(())
+    }
+
+    fn make_dir_all(&mut self, path: &Path) -> Result<(), Self::Error> {
+        fs::create_dir_all(path)?;
+        Ok(())
+    }
+
+    fn dir_is_empty(&mut self, path: &Path) -> Result<bool, Self::Error> {
+        Ok(fs::read_dir(path)?.count() != 0)
     }
 
     fn remove_dir(&mut self, path: &Path) -> Result<(), Self::Error> {
@@ -120,6 +152,13 @@ impl System for LocalSystem {
         fs::set_permissions(path, permissions)?;
 
         Ok(())
+    }
+
+    fn read_dir(&mut self, path: &Path) -> Result<Vec<String>, Self::Error> {
+        Ok(path
+            .read_dir()?
+            .map(|item| item.unwrap().file_name().to_str().unwrap().to_owned())
+            .collect())
     }
 }
 

@@ -273,7 +273,7 @@ mod tests {
     #[test]
     #[ignore]
     pub fn lxc_apt_install() {
-        let mut sys = LxcInstance::start();
+        let mut sys = LxcInstance::start(LxcInstance::DEFAULT_IMAGE);
         let p = AptInstall {
             name: "nginx".to_string(),
         };
@@ -295,7 +295,7 @@ mod tests {
     #[test]
     #[ignore]
     pub fn lxc_apt_update() {
-        let mut sys = LxcInstance::start();
+        let mut sys = LxcInstance::start(LxcInstance::DEFAULT_IMAGE);
         let p = AptUpdate;
 
         p.create(&mut sys).unwrap();

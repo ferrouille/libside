@@ -6,14 +6,12 @@ use builder::{fs::CreateDirectory, Builder};
 use requirements::{Requirement, Supports};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
-    fs::{self, File},
-    io::BufRead,
+    io::{BufRead, Cursor},
     num::ParseIntError,
-    os::unix::prelude::PermissionsExt,
     path::{Path, PathBuf},
 };
 use structopt::StructOpt;
-use system::{LocalSystem, System};
+use system::System;
 
 pub use libside_procmacro::config_file;
 
@@ -33,46 +31,49 @@ pub enum RunError<S: System, B: Builder> {
     CurrentExeNotFound(std::io::Error),
 
     #[error("Initialization failed: {}", .0)]
-    InitFailed(InitError),
+    InitFailed(InitError<S>),
 
     #[error("Build failed: {}", .0)]
     BuildFailed(BuildError<S, B>),
+
+    #[error("Verification failed")]
+    VerificationFailed,
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum InitError {
+pub enum InitError<S: System> {
     #[error("The base directory {:?} is not empty", .0)]
     BaseDirectoryNotEmpty(PathBuf),
 
     #[error("Could not open {:?}: {}", .0, .1)]
-    UnableToOpen(PathBuf, std::io::Error),
+    UnableToOpen(PathBuf, S::Error),
 
     #[error("Unable to create directory {:?}: {}", .0, .1)]
-    UnableToCreateDir(PathBuf, std::io::Error),
+    UnableToCreateDir(PathBuf, S::Error),
 
     #[error("Unable to write current version to {:?}: {}", .0, .1)]
-    UnableToWriteCurrentVersion(PathBuf, std::io::Error),
+    UnableToWriteCurrentVersion(PathBuf, S::Error),
 
     #[error("Unable to write database: {}", .0)]
-    UnableToWriteDb(DbWriteError),
+    UnableToWriteDb(DbWriteError<S>),
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum DbWriteError {
+pub enum DbWriteError<S: System> {
     #[error("Unable to write database to {}: {}", .0.display(), .1)]
-    UnableToWriteCurrentVersion(PathBuf, std::io::Error),
+    UnableToWriteCurrentVersion(PathBuf, S::Error),
 
     #[error("Unable to serialize database: {}", .0)]
     UnableToSerialize(serde_json::Error),
 
     #[error("Unable to create database {}: {}", .0.display(), .1)]
-    UnableToCreateDb(PathBuf, std::io::Error),
+    UnableToCreateDb(PathBuf, S::Error),
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum GetCurrentStateError {
+pub enum GetCurrentStateError<S: System> {
     #[error("Unable to read {:?}: {}", .0, .1)]
-    UnableToReadCurrentState(PathBuf, std::io::Error),
+    UnableToReadCurrentState(PathBuf, S::Error),
 
     #[error("Failed to parse the current version number: {}", .0)]
     CurrentNotANumber(ParseIntError),
@@ -87,7 +88,7 @@ pub enum BuildError<S: System, B: Builder> {
     UnableToGenerateFiles(()),
 
     #[error("Unable to change the current install: {}", .0)]
-    UnableToChangeCurrentInstall(std::io::Error),
+    UnableToChangeCurrentInstall(S::Error),
 
     #[error("Unable to determine differences with previous build: {}", .0)]
     DiffFailed(<B::Requirement as Requirement>::HasBeenCreatedError<S>),
@@ -139,12 +140,15 @@ pub struct Dirs {
     secrets: PathBuf,
 }
 
-fn create_dir_with_err(dir: &Path) -> Result<(), InitError> {
-    fs::create_dir_all(&dir).map_err(|e| InitError::UnableToCreateDir(dir.to_owned(), e))
+fn create_dir_with_err<S: System>(system: &mut S, dir: &Path) -> Result<(), InitError<S>> {
+    system
+        .make_dir_all(dir)
+        .map_err(|e| InitError::UnableToCreateDir(dir.to_owned(), e))
 }
 
 impl Dirs {
-    pub fn new(base: &Path) -> Self {
+    pub fn new<P: AsRef<Path>>(base: P) -> Self {
+        let base = base.as_ref();
         Dirs {
             base: base.to_owned(),
             packages: base.join("packages"),
@@ -180,10 +184,17 @@ impl Dirs {
         self.installed.join("current")
     }
 
-    pub fn current_install(&self) -> Result<StateDirs, GetCurrentStateError> {
+    pub fn current_install<S: System>(
+        &self,
+        system: &mut S,
+    ) -> Result<StateDirs, GetCurrentStateError<S>> {
         let current = self.current_path();
-        let current = fs::read_to_string(&current)
-            .map_err(|e| GetCurrentStateError::UnableToReadCurrentState(current, e))?;
+        let current = String::from_utf8(
+            system
+                .file_contents(&current)
+                .map_err(|e| GetCurrentStateError::UnableToReadCurrentState(current, e))?,
+        )
+        .unwrap();
         let version = current
             .parse::<u64>()
             .map_err(GetCurrentStateError::CurrentNotANumber)?;
@@ -191,15 +202,22 @@ impl Dirs {
         Ok(self.get_install(version))
     }
 
-    pub fn set_current_install(&self, new: &StateDirs) -> Result<(), std::io::Error> {
+    pub fn set_current_install<S: System>(
+        &self,
+        new: &StateDirs,
+        system: &mut S,
+    ) -> Result<(), S::Error> {
         let current = self.current_path();
-        fs::write(&current, &format!("{}", new.version))
+        system.put_file_contents(&current, format!("{}", new.version).as_bytes())
     }
 
-    pub fn fresh_install(&self) -> Result<StateDirs, GetCurrentStateError> {
+    pub fn fresh_install<S: System>(
+        &self,
+        system: &mut S,
+    ) -> Result<StateDirs, GetCurrentStateError<S>> {
         let mut max = 0u64;
-        for dir in self.installed.read_dir().unwrap() {
-            match dir.unwrap().file_name().to_string_lossy().parse::<u64>() {
+        for dir in system.read_dir(&self.installed).unwrap() {
+            match dir.parse::<u64>() {
                 Ok(n) => max = max.max(n),
                 _ => (),
             }
@@ -209,40 +227,39 @@ impl Dirs {
         Ok(self.get_install(next_version))
     }
 
-    pub fn initialize<R: Requirement>(&self) -> Result<(), InitError> {
-        create_dir_with_err(&self.base)?;
+    pub fn initialize<R: Requirement, S: System>(
+        &self,
+        system: &mut S,
+    ) -> Result<(), InitError<S>> {
+        create_dir_with_err(system, &self.base)?;
 
         // Make sure nobody besides us can read the base dir
-        let metadata = self.base.metadata().unwrap();
-        let mut permissions = metadata.permissions();
-        permissions.set_mode(0o700);
-        fs::set_permissions(&self.base, permissions).unwrap();
+        system.chmod(&self.base, 0o700).unwrap();
 
-        if fs::read_dir(&self.base)
+        if !system
+            .dir_is_empty(&self.base)
             .map_err(|e| InitError::UnableToOpen(self.base.to_owned(), e))?
-            .count()
-            != 0
         {
             return Err(InitError::BaseDirectoryNotEmpty(self.base.to_owned()));
         }
 
-        create_dir_with_err(&self.packages)?;
-        create_dir_with_err(&self.installed)?;
-        create_dir_with_err(&self.chroots)?;
-        create_dir_with_err(&self.files_exposed)?;
-        create_dir_with_err(&self.files_config)?;
-        create_dir_with_err(&self.data)?;
-        create_dir_with_err(&self.backups)?;
-        create_dir_with_err(&self.secrets)?;
+        create_dir_with_err(system, &self.packages)?;
+        create_dir_with_err(system, &self.installed)?;
+        create_dir_with_err(system, &self.chroots)?;
+        create_dir_with_err(system, &self.files_exposed)?;
+        create_dir_with_err(system, &self.files_config)?;
+        create_dir_with_err(system, &self.data)?;
+        create_dir_with_err(system, &self.backups)?;
+        create_dir_with_err(system, &self.secrets)?;
 
         let install = self.get_install(0);
-        install.create_dirs()?;
+        install.create_dirs(system)?;
         install
-            .write_dbs(&SystemState::<R>::default())
+            .write_dbs(system, &SystemState::<R>::default())
             .map_err(InitError::UnableToWriteDb)?;
 
-        let current = self.current_path();
-        fs::write(&current, "0").map_err(|e| InitError::UnableToWriteCurrentVersion(current, e))?;
+        self.set_current_install(&install, system)
+            .map_err(|e| InitError::UnableToWriteCurrentVersion(self.current_path(), e))?;
 
         Ok(())
     }
@@ -287,9 +304,9 @@ impl StateDirs {
         &self.db
     }
 
-    pub fn create_dirs(&self) -> Result<(), InitError> {
-        create_dir_with_err(&self.generated)?;
-        create_dir_with_err(&self.chroots)?;
+    pub fn create_dirs<S: System>(&self, system: &mut S) -> Result<(), InitError<S>> {
+        create_dir_with_err(system, &self.generated)?;
+        create_dir_with_err(system, &self.chroots)?;
 
         Ok(())
     }
@@ -325,18 +342,24 @@ impl StateDirs {
         self.generated.join(name).join("deleted-file-backup")
     }
 
-    pub fn load_install<R: DeserializeOwned>(&self) -> SystemState<R> {
-        let mut f = File::open(&self.db).unwrap();
+    pub fn load_install<R: DeserializeOwned, S: System>(&self, system: &mut S) -> SystemState<R> {
+        let contents = system.file_contents(&self.db).unwrap();
 
         SystemState {
-            graph: serde_json::from_reader(&mut f).unwrap(),
+            graph: serde_json::from_reader(&mut Cursor::new(contents)).unwrap(),
         }
     }
 
-    pub fn write_dbs<R: Serialize>(&self, dbs: &SystemState<R>) -> Result<(), DbWriteError> {
-        let mut f = File::create(&self.db)
+    pub fn write_dbs<R: Serialize, S: System>(
+        &self,
+        system: &mut S,
+        dbs: &SystemState<R>,
+    ) -> Result<(), DbWriteError<S>> {
+        let contents =
+            serde_json::to_string(&dbs.graph).map_err(DbWriteError::UnableToSerialize)?;
+        system
+            .put_file_contents(&self.db, contents.as_bytes())
             .map_err(|e| DbWriteError::UnableToCreateDb(self.db.clone(), e))?;
-        serde_json::to_writer(&mut f, &dbs.graph).map_err(DbWriteError::UnableToSerialize)?;
 
         Ok(())
     }
@@ -386,22 +409,34 @@ pub struct Status {
 }
 
 impl SiDe {
-    pub fn run<B: Builder>(new_builder: impl FnOnce() -> B) -> Result<(), RunError<LocalSystem, B>>
+    pub fn run<S: System, B: Builder>(system: &mut S, builder: B) -> Result<(), RunError<S, B>>
     where
         B::Requirement: Supports<CreateDirectory>,
     {
         let args = Args::from_args();
         let dirs = Dirs::new(&args.base_dir);
 
-        match args.command {
+        Self::run_command(args.command, &dirs, system, builder)
+    }
+
+    pub fn run_command<S: System, B: Builder>(
+        command: Command,
+        dirs: &Dirs,
+        system: &mut S,
+        builder: B,
+    ) -> Result<(), RunError<S, B>>
+    where
+        B::Requirement: Supports<CreateDirectory>,
+    {
+        match command {
             Command::Init => {
-                dirs.initialize::<B::Requirement>()
+                dirs.initialize::<B::Requirement, S>(system)
                     .map_err(RunError::InitFailed)?;
 
                 Ok(())
             }
             Command::Status => {
-                let current = dirs.current_install().unwrap();
+                let current = dirs.current_install(system).unwrap();
 
                 println!(
                     "{}",
@@ -420,16 +455,16 @@ impl SiDe {
                 ignore_verification,
                 ask_overwrite,
             } => {
-                let current = dirs.current_install().unwrap();
+                let current = dirs.current_install(system).unwrap();
                 let target = dirs.get_install(target);
-                let current_state = current.load_install::<B::Requirement>();
-                let target_state = target.load_install::<B::Requirement>();
+                let current_state = current.load_install::<B::Requirement, S>(system);
+                let target_state = target.load_install::<B::Requirement, S>(system);
 
                 if ignore_verification {
                     println!("Skipping verification of current state...");
                 } else {
                     println!("Verifying current state...");
-                    match current_state.verify_system_state(&mut LocalSystem).unwrap() {
+                    match current_state.verify_system_state(system).unwrap() {
                         VerificationState::Ok => println!("Verification OK"),
                         err @ VerificationState::Invalid { .. } => {
                             panic!("Verification failed:\n{}", err)
@@ -442,15 +477,15 @@ impl SiDe {
 
                 let cmp = target_state
                     .graph
-                    .compare_with(&mut LocalSystem, &current_state.graph)
+                    .compare_with(system, &current_state.graph)
                     .map_err(BuildError::DiffFailed)?;
                 let instructions = cmp
-                    .generate_application_sequence(&mut LocalSystem)
+                    .generate_application_sequence(system)
                     .map_err(BuildError::ApplicationSequenceGenerationFailed)?;
 
                 // The result returned by run describes which requirements were pre-existing;
                 // That's not relevant to us, because we want to keep the original values that we determined when we created this install.
-                match instructions.run(&mut LocalSystem, |s| {
+                match instructions.run(system, |s| {
                     if ask_overwrite {
                         println!("Can {} be overwritten? Type 'yes' to continue or anything else to abort", s);
                         let line = std::io::stdin().lock().lines().next().unwrap().unwrap();
@@ -465,7 +500,7 @@ impl SiDe {
                         println!("Error: {}", err);
                         println!("Reverting...");
                         instructions
-                            .revert(&mut LocalSystem, &err.revert_info)
+                            .revert(system, &err.revert_info)
                             .unwrap();
 
                         println!("Revert OK");
@@ -473,7 +508,7 @@ impl SiDe {
                     }
                 }
 
-                dirs.set_current_install(&target)
+                dirs.set_current_install(&target, system)
                     .map_err(BuildError::UnableToChangeCurrentInstall)?;
                 println!("Done!");
 
@@ -483,14 +518,14 @@ impl SiDe {
                 ignore_verification,
                 ask_overwrite,
             } => {
-                let current = dirs.current_install().unwrap();
-                let current_state = current.load_install::<B::Requirement>();
+                let current = dirs.current_install(system).unwrap();
+                let current_state = current.load_install::<B::Requirement, S>(system);
 
                 if ignore_verification {
                     println!("Skipping verification of current state...");
                 } else {
                     println!("Verifying current state...");
-                    match current_state.verify_system_state(&mut LocalSystem).unwrap() {
+                    match current_state.verify_system_state(system).unwrap() {
                         VerificationState::Ok => println!("Verification OK"),
                         err @ VerificationState::Invalid { .. } => {
                             panic!("Verification failed:\n{}", err)
@@ -498,24 +533,24 @@ impl SiDe {
                     }
                 }
 
-                let new_install = dirs.fresh_install().unwrap();
+                let new_install = dirs.fresh_install(system).unwrap();
                 println!("Current install: {}", current.base.display());
                 println!("New install: {}", new_install.base.display());
 
-                let packages = Packages::load(&dirs).unwrap();
-                let prepared = builder::run(&dirs, packages, &new_install, new_builder())
+                let packages = Packages::load(&dirs, system).unwrap();
+                let prepared = builder::run(&dirs, system, packages, &new_install, builder)
                     .map_err(BuildError::BuildFailed)?;
 
                 let graph = prepared
-                    .generate_files(&mut LocalSystem, &current_state)
+                    .generate_files(system, &current_state)
                     .map_err(BuildError::UnableToGenerateFiles)?;
                 let cmp = graph
-                    .compare_with(&mut LocalSystem, &current_state.graph)
+                    .compare_with(system, &current_state.graph)
                     .map_err(BuildError::DiffFailed)?;
                 let instructions = cmp
-                    .generate_application_sequence(&mut LocalSystem)
+                    .generate_application_sequence(system)
                     .map_err(BuildError::ApplicationSequenceGenerationFailed)?;
-                match instructions.run(&mut LocalSystem, |s| {
+                match instructions.run(system, |s| {
                     if ask_overwrite {
                         println!("Can {} be overwritten? Type 'yes' to continue or anything else to abort", s);
                         let line = std::io::stdin().lock().lines().next().unwrap().unwrap();
@@ -525,8 +560,8 @@ impl SiDe {
                     return false;
                 }) {
                     Ok(result) => {
-                        let _new_state = prepared.save(result).map_err(BuildError::SaveError)?;
-                        dirs.set_current_install(&new_install)
+                        let _new_state = prepared.save(system, result).map_err(BuildError::SaveError)?;
+                        dirs.set_current_install(&new_install, system)
                             .map_err(BuildError::UnableToChangeCurrentInstall)?;
 
                         Ok(())
@@ -536,7 +571,7 @@ impl SiDe {
                         println!("Error: {}", err);
                         println!("Reverting...");
                         instructions
-                            .revert(&mut LocalSystem, &err.revert_info)
+                            .revert(system, &err.revert_info)
                             .unwrap();
 
                         println!("Revert OK");
@@ -545,26 +580,25 @@ impl SiDe {
                 }
             }
             Command::Verify { fix } => {
-                let current = dirs.current_install().unwrap();
+                let current = dirs.current_install(system).unwrap();
                 println!("Current install: {}", current.base.display());
 
-                let current_state = current.load_install::<B::Requirement>();
-                match current_state.verify_system_state(&mut LocalSystem).unwrap() {
+                let current_state = current.load_install::<B::Requirement, S>(system);
+                match current_state.verify_system_state(system).unwrap() {
                     VerificationState::Ok => println!("Verification OK"),
                     err @ VerificationState::Invalid { .. } => {
                         println!("Verification failed:\n{}", err);
 
                         if fix {
-                            let seq = current_state
-                                .graph
-                                .generate_fix_sequence(&mut LocalSystem)
-                                .unwrap();
+                            let seq = current_state.graph.generate_fix_sequence(system).unwrap();
 
                             // The result returned by run describes which requirements were pre-existing;
                             // That's not relevant to us, because we want to keep the original values that we determined when we created this install.
-                            let _ = seq.run(&mut LocalSystem, |_| false).unwrap();
+                            let _ = seq.run(system, |_| false).unwrap();
 
                             println!("Fixing successful!");
+                        } else {
+                            return Err(RunError::VerificationFailed);
                         }
                     }
                 }

@@ -608,7 +608,7 @@ mod tests {
     #[test]
     #[ignore]
     pub fn lxc_create_mysql_database() {
-        let mut sys = LxcInstance::start();
+        let mut sys = LxcInstance::start(LxcInstance::DEFAULT_IMAGE);
         let p = CreateMySqlDatabase {
             name: String::from("foo"),
         };
@@ -645,7 +645,7 @@ mod tests {
     #[test]
     #[ignore]
     pub fn lxc_create_mysql_user() {
-        let mut sys = LxcInstance::start();
+        let mut sys = LxcInstance::start(LxcInstance::DEFAULT_IMAGE);
         let p = CreateMySqlUser {
             name: String::from("foo"),
             pass: String::from("bar"),
@@ -691,7 +691,7 @@ mod tests {
     #[test]
     #[ignore]
     pub fn lxc_create_mysql_grant() {
-        let mut sys = LxcInstance::start();
+        let mut sys = LxcInstance::start(LxcInstance::DEFAULT_IMAGE);
         let pre1 = CreateMySqlUser {
             name: String::from("foo"),
             pass: String::from("bar"),

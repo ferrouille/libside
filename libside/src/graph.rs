@@ -724,6 +724,10 @@ mod tests {
             Ok(self.created.contains(&path.to_path_buf()))
         }
 
+        fn path_is_dir(&self, _path: &std::path::Path) -> Result<bool, Self::Error> {
+            todo!()
+        }
+
         fn file_contents(&self, _path: &std::path::Path) -> Result<Vec<u8>, Self::Error> {
             todo!()
         }
@@ -778,6 +782,26 @@ mod tests {
         }
 
         fn chmod(&mut self, _path: &std::path::Path, _mode: u32) -> Result<(), Self::Error> {
+            todo!()
+        }
+
+        fn put_file_contents(
+            &self,
+            _path: &std::path::Path,
+            _contents: &[u8],
+        ) -> Result<(), Self::Error> {
+            todo!()
+        }
+
+        fn make_dir_all(&mut self, _path: &std::path::Path) -> Result<(), Self::Error> {
+            todo!()
+        }
+
+        fn dir_is_empty(&mut self, _path: &std::path::Path) -> Result<bool, Self::Error> {
+            todo!()
+        }
+
+        fn read_dir(&mut self, _path: &std::path::Path) -> Result<Vec<String>, Self::Error> {
             todo!()
         }
     }

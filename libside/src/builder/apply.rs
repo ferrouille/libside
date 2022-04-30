@@ -6,10 +6,7 @@ use crate::{
     graph::{ApplyResult, Graph, Pending},
     StateDirs,
 };
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 pub struct PreparedBuild<'d, R> {
     contexts: Vec<MinimalContext>,
@@ -32,18 +29,20 @@ impl<'d, R: Requirement> PreparedBuild<'d, R> {
 
     pub fn generate_files<'r, S: System>(
         &self,
-        _system: &mut S,
+        system: &mut S,
         _prev: &SystemState<R>,
     ) -> Result<&Graph<R, Pending>, ()> {
         // TODO: Use system to create the files
-        self.install.create_dirs().unwrap();
+        self.install.create_dirs(system).unwrap();
 
         // Generate the config files, because we need them for the install
         for config in self.contexts.iter().map(|c| c.files.iter()).flatten() {
             let path = config.source.parent().unwrap();
             println!("  prep : {}", config.source.display());
-            fs::create_dir_all(&path).unwrap();
-            fs::write(&config.source, &config.contents).unwrap();
+            system.make_dir_all(&path).unwrap();
+            system
+                .put_file_contents(&config.source, &config.contents)
+                .unwrap();
         }
 
         for deleted in self
@@ -54,7 +53,7 @@ impl<'d, R: Requirement> PreparedBuild<'d, R> {
         {
             let path = deleted.save_to.parent().unwrap();
             println!("  prep : {}", path.display());
-            fs::create_dir_all(&path).unwrap();
+            system.make_dir_all(&path).unwrap();
         }
 
         // Create the main application files
@@ -64,10 +63,10 @@ impl<'d, R: Requirement> PreparedBuild<'d, R> {
                 println!("  expose: {:?}", exposed.source);
                 let metadata = exposed.source.symlink_metadata().unwrap();
                 if metadata.file_type().is_dir() {
-                    fs::create_dir_all(&exposed.target).unwrap();
-                    copy(&exposed.source, &exposed.target).unwrap();
+                    system.make_dir_all(&exposed.target).unwrap();
+                    copy(system, &exposed.source, &exposed.target).unwrap();
                 } else {
-                    copy_file(&exposed.source, &exposed.target).unwrap();
+                    copy_file(system, &exposed.source, &exposed.target).unwrap();
                 }
             }
         }
@@ -75,17 +74,25 @@ impl<'d, R: Requirement> PreparedBuild<'d, R> {
         Ok(&self.target_graph)
     }
 
-    pub fn save(self, result: ApplyResult) -> Result<SystemState<R>, ()> {
+    pub fn save<S: System>(
+        self,
+        system: &mut S,
+        result: ApplyResult,
+    ) -> Result<SystemState<R>, ()> {
         let state = SystemState {
             graph: self.target_graph.apply_execution_results(result),
         };
 
-        self.install.write_dbs(&state).unwrap();
+        self.install.write_dbs(system, &state).unwrap();
         Ok(state)
     }
 }
 
-pub fn copy<U: AsRef<Path>, V: AsRef<Path>>(from: U, to: V) -> Result<(), std::io::Error> {
+pub fn copy<S: System, U: AsRef<Path>, V: AsRef<Path>>(
+    system: &mut S,
+    from: U,
+    to: V,
+) -> Result<(), S::Error> {
     let mut stack = Vec::new();
     stack.push(PathBuf::from(from.as_ref()));
 
@@ -102,20 +109,20 @@ pub fn copy<U: AsRef<Path>, V: AsRef<Path>>(from: U, to: V) -> Result<(), std::i
         } else {
             output_root.join(&src)
         };
-        if fs::metadata(&dest).is_err() {
-            fs::create_dir_all(&dest)?;
+
+        if !system.path_exists(&dest)? {
+            system.make_dir_all(&dest)?;
         }
 
-        for entry in fs::read_dir(working_path)? {
-            let entry = entry?;
-            let path = entry.path();
+        for entry in system.read_dir(&working_path)? {
+            let path = working_path.join(entry);
             if path.is_dir() {
                 stack.push(path);
             } else {
                 match path.file_name() {
                     Some(filename) => {
                         let dest_path = dest.join(filename);
-                        copy_file(&path, &dest_path)?;
+                        copy_file(system, &path, &dest_path)?;
                     }
                     None => {
                         panic!("failed to copy: {:?}", path);
@@ -128,11 +135,7 @@ pub fn copy<U: AsRef<Path>, V: AsRef<Path>>(from: U, to: V) -> Result<(), std::i
     Ok(())
 }
 
-fn copy_file(path: &PathBuf, dest: &PathBuf) -> Result<(), std::io::Error> {
-    Ok(if path.is_symlink() {
-        todo!()
-    } else {
-        fs::copy(&path, &dest)?;
-        // TODO: chown, chgroup, chmod
-    })
+fn copy_file<S: System>(system: &mut S, path: &PathBuf, dest: &PathBuf) -> Result<(), S::Error> {
+    // TODO: Handle symlinks, permissions
+    Ok(system.copy_file(&path, &dest)?)
 }

@@ -2,6 +2,7 @@ use self::apply::PreparedBuild;
 use self::fs::{CreateDirectory, Delete};
 use self::users::{Group, User};
 use crate::requirements::{Requirement, Supports};
+use crate::system::System;
 use crate::{
     graph::{Graph, GraphNodeReference, Pending},
     secrets::{Secret, SecretId, Secrets},
@@ -12,7 +13,6 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::path::Path as StdPath;
 use std::{
     fmt::{Debug, Display},
-    io,
     path::PathBuf,
 };
 use typemap::{Key, TypeMap};
@@ -452,18 +452,15 @@ impl<T: 'static> Key for SimpleKv<T> {
     type Value = T;
 }
 
-fn scan_files(path: &StdPath) -> Result<Vec<PathBuf>, io::Error> {
+fn scan_files<S: System>(path: &StdPath, system: &mut S) -> Result<Vec<PathBuf>, S::Error> {
     let mut result = Vec::new();
-
     let mut stack = Vec::new();
     stack.push(path.to_path_buf());
 
     while let Some(working_path) = stack.pop() {
-        for entry in std::fs::read_dir(&working_path)? {
-            let entry = entry?;
-            let path = entry.path();
-            let metadata = std::fs::symlink_metadata(&path)?;
-            if metadata.is_dir() {
+        for entry in system.read_dir(&working_path)? {
+            let path = working_path.join(entry);
+            if system.path_is_dir(&path)? {
                 stack.push(path.clone());
             }
 
@@ -479,17 +476,15 @@ pub struct Packages<C> {
 }
 
 impl<C: DeserializeOwned> Packages<C> {
-    pub fn load(dirs: &Dirs) -> Result<Packages<C>, io::Error> {
+    pub fn load<S: System>(dirs: &Dirs, system: &mut S) -> Result<Packages<C>, S::Error> {
         let package_dir = &dirs.packages;
         let mut packages = Vec::new();
-        for package_path in package_dir.read_dir()? {
-            let package_path = package_path?;
-            let file_type = package_path.file_type()?;
-            if file_type.is_dir() {
-                let path = package_path.path();
+        for package_path in system.read_dir(package_dir)? {
+            let path = PathBuf::from(&package_path);
+            if system.path_is_dir(&path)? {
+                let path = package_dir.join(path);
                 let config =
-                    toml::from_str(std::fs::read_to_string(path.join("package.toml"))?.as_str())
-                        .unwrap();
+                    toml::from_slice(&system.file_contents(&path.join("package.toml"))?).unwrap();
                 let name = path.file_name().unwrap().to_string_lossy().to_string();
 
                 if name == "_start" || name == "_finish" {
@@ -498,13 +493,13 @@ impl<C: DeserializeOwned> Packages<C> {
 
                 let info = PackageInfo {
                     name,
-                    files: scan_files(&path)?,
+                    files: scan_files(&path, system)?,
                     path,
                 };
 
                 packages.push(Package { info, config });
             } else {
-                return Err(io::Error::new(io::ErrorKind::Other, String::new()));
+                panic!("There are files in the packages directory");
             }
         }
 
@@ -512,8 +507,9 @@ impl<C: DeserializeOwned> Packages<C> {
     }
 }
 
-pub fn run<'d, K, B: Builder<PackageConfig = K>>(
+pub fn run<'d, K, B: Builder<PackageConfig = K>, S: System>(
     dirs: &Dirs,
+    system: &mut S,
     packages: Packages<K>,
     install: &'d StateDirs,
     builder: B,
@@ -525,7 +521,7 @@ where
     let mut graph = Graph::new();
     let mut contexts = Vec::new();
 
-    let mut secrets = Secrets::load(&dirs.secrets).unwrap();
+    let mut secrets = Secrets::load(&dirs.secrets, system).unwrap();
 
     let start = PackageInfo {
         name: String::from("_start"),
@@ -578,7 +574,7 @@ where
     builder.finish_build(&mut context, data)?;
     contexts.push(context.into_minimal());
 
-    secrets.save(&dirs.secrets).unwrap();
+    secrets.save(&dirs.secrets, system).unwrap();
 
     Ok(PreparedBuild::new(install, contexts, graph))
 }

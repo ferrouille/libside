@@ -1,10 +1,10 @@
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
     collections::{HashMap, HashSet},
-    fs,
-    os::unix::prelude::PermissionsExt,
     path::Path,
 };
+
+use crate::system::System;
 
 pub mod keys;
 pub mod password;
@@ -47,36 +47,31 @@ pub trait Secret: Serialize + DeserializeOwned + Clone {
 }
 
 impl Secrets {
-    pub fn load(path: &Path) -> Result<Secrets, std::io::Error> {
+    pub fn load<S: System>(path: &Path, system: &mut S) -> Result<Secrets, S::Error> {
         let mut result = Secrets {
             secrets: HashMap::new(),
             new_secrets: HashSet::new(),
         };
 
-        for package_dir in fs::read_dir(path)? {
-            let package_dir = package_dir?;
+        for package_dir in system.read_dir(path)? {
+            let package_dir = path.join(package_dir);
 
-            for kind_dir in package_dir.path().read_dir()? {
-                let kind_dir = kind_dir?;
+            for kind_dir in system.read_dir(&package_dir)? {
+                let kind_dir = package_dir.join(&kind_dir);
 
-                for entry_dir in kind_dir.path().read_dir()? {
-                    let entry_path = entry_dir?;
+                for entry_dir in system.read_dir(&kind_dir)? {
+                    let entry_path = kind_dir.join(&entry_dir);
 
                     let package = package_dir
                         .file_name()
-                        .as_os_str()
+                        .unwrap()
                         .to_str()
                         .unwrap()
                         .to_string();
-                    let kind = kind_dir
-                        .file_name()
-                        .as_os_str()
-                        .to_str()
-                        .unwrap()
-                        .to_string();
+                    let kind = kind_dir.file_name().unwrap().to_str().unwrap().to_string();
                     let name = entry_path
                         .file_name()
-                        .as_os_str()
+                        .unwrap()
                         .to_str()
                         .unwrap()
                         .to_string();
@@ -90,7 +85,7 @@ impl Secrets {
 
                     result
                         .secrets
-                        .insert(internal_id, SecretData(fs::read(&entry_path.path())?));
+                        .insert(internal_id, SecretData(system.file_contents(&entry_path)?));
                 }
             }
         }
@@ -98,26 +93,16 @@ impl Secrets {
         Ok(result)
     }
 
-    pub fn save(&mut self, path: &Path) -> Result<(), std::io::Error> {
+    pub fn save<S: System>(&mut self, path: &Path, system: &mut S) -> Result<(), S::Error> {
         for item in self.new_secrets.iter() {
             let dir = path.join(&item.id.package).join(&item.kind);
 
-            fs::create_dir_all(&dir)?;
-
-            // Make sure nobody else can check what secrets exist
-            let metadata = dir.metadata()?;
-            let mut permissions = metadata.permissions();
-            permissions.set_mode(0o700);
-            fs::set_permissions(&dir, permissions)?;
+            system.make_dir_all(&dir)?;
+            system.chmod(&dir, 0o700)?;
 
             let file = dir.join(&item.id.name);
-            fs::write(&file, &self.secrets.get(item).unwrap().0)?;
-
-            // Also make sure the secret itself can't be read by anyone else
-            let metadata = file.metadata()?;
-            let mut permissions = metadata.permissions();
-            permissions.set_mode(0o600);
-            fs::set_permissions(file, permissions)?;
+            system.put_file_contents(&file, &self.secrets.get(item).unwrap().0)?;
+            system.chmod(&file, 0o600)?;
         }
 
         self.new_secrets.clear();

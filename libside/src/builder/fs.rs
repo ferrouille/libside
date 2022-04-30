@@ -622,7 +622,7 @@ mod tests {
     #[test]
     #[ignore]
     pub fn lxc_file_with_contents() {
-        let mut sys = LxcInstance::start();
+        let mut sys = LxcInstance::start(LxcInstance::DEFAULT_IMAGE);
         let data = "Hello World".as_bytes();
         let data2 = "Fizz Buzz".as_bytes();
         let p = FileWithContents {
@@ -679,7 +679,7 @@ mod tests {
     #[test]
     #[ignore]
     pub fn lxc_create_directory() {
-        let mut sys = LxcInstance::start();
+        let mut sys = LxcInstance::start(LxcInstance::DEFAULT_IMAGE);
         let p = CreateDirectory {
             path: PathBuf::from("/foo"),
             needs_cleanup: true,
@@ -714,7 +714,7 @@ mod tests {
     #[test]
     #[ignore]
     pub fn lxc_delete() {
-        let mut sys = LxcInstance::start();
+        let mut sys = LxcInstance::start(LxcInstance::DEFAULT_IMAGE);
         // needs_cleanup: true
         let p = Delete {
             path: PathBuf::from("/foo"),

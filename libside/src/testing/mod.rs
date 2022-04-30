@@ -12,11 +12,16 @@ lazy_static! {
 
 #[derive(Debug)]
 pub struct LxcInstance {
+    is_ready: bool,
     name: String,
 }
 
 impl LxcInstance {
-    pub fn start() -> LxcInstance {
+    pub const DEFAULT_IMAGE: &'static str = Self::UBUNTU_FOCAL;
+    pub const UBUNTU_FOCAL: &'static str = "images:ubuntu/focal";
+    pub const UBUNTU_JAMMY: &'static str = "images:ubuntu/jammy";
+
+    pub fn start(image: &str) -> LxcInstance {
         // Make sure we don't launch multiple VMs at the same time because that somehow causes crashes.
         let guard = LOCK.lock().unwrap();
         let name = format!(
@@ -30,9 +35,11 @@ impl LxcInstance {
 
         let result = Command::new("lxc")
             .arg("launch")
-            .arg("images:ubuntu/focal")
+            .arg(image)
             .arg(&name)
             .arg("--vm")
+            .arg("-p")
+            .arg("default")
             .output()
             .unwrap();
         drop(guard);
@@ -45,15 +52,18 @@ impl LxcInstance {
         );
 
         println!("lxc instance started as {}", name);
-        let inst = LxcInstance { name };
+        let mut inst = LxcInstance {
+            name,
+            is_ready: false,
+        };
         inst.wait_until_ready();
 
         println!("Ready");
         inst
     }
 
-    fn wait_until_ready(&self) {
-        for _ in 0..10 {
+    fn wait_until_ready(&mut self) {
+        for _ in 0..100 {
             let result = Command::new("lxc")
                 .arg("exec")
                 .arg(&self.name)
@@ -65,20 +75,32 @@ impl LxcInstance {
             }
         }
 
+        self.is_ready = true;
+
         panic!("Container {} is not starting", self.name);
+    }
+
+    pub fn copy_files_to_container(&mut self, host_source: &str, container_target: &str) {
+        Command::new("lxc")
+            .arg("push")
+            .arg(host_source)
+            .arg(&format!(
+                "{}/{}",
+                self.name,
+                container_target
+                    .strip_prefix("/")
+                    .expect("container target path must be absolute")
+            ))
+            .output()
+            .unwrap();
     }
 }
 
 impl Drop for LxcInstance {
     fn drop(&mut self) {
         Command::new("lxc")
-            .arg("stop")
-            .arg(&self.name)
-            .output()
-            .unwrap();
-
-        Command::new("lxc")
             .arg("delete")
+            .arg("--force")
             .arg(&self.name)
             .output()
             .unwrap();
@@ -86,8 +108,10 @@ impl Drop for LxcInstance {
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
-#[error("Error.")]
-pub struct LxcError;
+pub enum LxcError {
+    #[error("path does not exist")]
+    PathDoesNotExist,
+}
 
 impl System for LxcInstance {
     type Error = LxcError;
@@ -100,11 +124,22 @@ impl System for LxcInstance {
         Ok(result.is_success())
     }
 
+    fn path_is_dir(&self, path: &std::path::Path) -> Result<bool, Self::Error> {
+        let path = path.as_os_str().to_str().unwrap();
+        let result = self.execute_command("/usr/bin/[", &["-d", path, "]"])?;
+
+        Ok(result.is_success())
+    }
+
     fn file_contents(&self, path: &std::path::Path) -> Result<Vec<u8>, Self::Error> {
         let path = path.as_os_str().to_str().unwrap();
         let result = self.execute_command("/usr/bin/cat", &[path])?;
 
-        Ok(result.stdout().to_vec())
+        if result.is_success() {
+            Ok(result.stdout().to_vec())
+        } else {
+            Err(LxcError::PathDoesNotExist)
+        }
     }
 
     fn execute_command(
@@ -191,5 +226,39 @@ impl System for LxcInstance {
         assert!(result.is_success());
 
         Ok(())
+    }
+
+    fn put_file_contents(
+        &self,
+        path: &std::path::Path,
+        contents: &[u8],
+    ) -> Result<(), Self::Error> {
+        let result =
+            self.execute_command_with_input("/usr/bin/tee", &[path.to_str().unwrap()], contents)?;
+
+        assert!(result.is_success());
+
+        Ok(())
+    }
+
+    fn make_dir_all(&mut self, path: &std::path::Path) -> Result<(), Self::Error> {
+        let path = path.as_os_str().to_str().unwrap();
+        let result = self.execute_command("/usr/bin/mkdir", &["-p", path])?;
+
+        assert!(result.is_success());
+
+        Ok(())
+    }
+
+    fn read_dir(&mut self, path: &std::path::Path) -> Result<Vec<String>, Self::Error> {
+        let result = self.execute_command("/usr/bin/ls", &[path.to_str().unwrap()])?;
+        let output = result.stdout_as_str().trim();
+        let data = if output == "" {
+            Vec::new()
+        } else {
+            output.split('\n').map(|s| s.to_owned()).collect::<Vec<_>>()
+        };
+
+        Ok(data)
     }
 }

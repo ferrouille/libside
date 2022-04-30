@@ -17,6 +17,7 @@ use libside::graph::GraphNodeReference;
 use libside::requirements::{Requirement, Supports};
 use libside::secrets::keys::AsymmetricKey;
 use libside::secrets::password::{Alphanumeric, Password};
+use libside::system::LocalSystem;
 use libside::{config_file, SiDe};
 use libside::{generic_apt_package, requirements};
 use serde::{Deserialize, Serialize};
@@ -772,7 +773,7 @@ impl Builder for Demo {
 }
 
 fn main() {
-    match SiDe::run(|| Demo) {
+    match SiDe::run(&mut LocalSystem, Demo) {
         Ok(_) => (),
         Err(e) => {
             eprintln!("{}", e);

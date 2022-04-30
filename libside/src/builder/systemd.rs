@@ -798,7 +798,7 @@ mod tests {
     #[test]
     #[ignore]
     pub fn lxc_service_running() {
-        let mut sys = LxcInstance::start();
+        let mut sys = LxcInstance::start(LxcInstance::DEFAULT_IMAGE);
         // must_restart: true, oneshot: false
         let p = ServiceRunning {
             name: String::from("nginx"),
@@ -903,7 +903,7 @@ mod tests {
     #[test]
     #[ignore]
     pub fn lxc_install_services() {
-        let mut sys = LxcInstance::start();
+        let mut sys = LxcInstance::start(LxcInstance::DEFAULT_IMAGE);
         let p = InstallServices;
 
         p.create(&mut sys).unwrap();
@@ -926,7 +926,7 @@ mod tests {
     #[test]
     #[ignore]
     pub fn lxc_enable_service() {
-        let mut sys = LxcInstance::start();
+        let mut sys = LxcInstance::start(LxcInstance::DEFAULT_IMAGE);
         // disable: false
         let p = EnableService {
             name: String::from("nginx"),
