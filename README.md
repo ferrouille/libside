@@ -12,6 +12,9 @@
 
 Each tool needs to define its own configuration format for packages. This format can be concise, since it only needs to account for configuration you specifically need.
 
+## Testing
+If you want to run all tests, you need to install `lxc`. Some tests are run in `lxc` VMs.
+
 ## Warning notes
 * This is unfinished software.
 * You should probably assume this software contains bugs that can delete all your files. Backup your files before you run it.

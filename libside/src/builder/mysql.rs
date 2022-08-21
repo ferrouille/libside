@@ -112,6 +112,11 @@ impl MySqlService {
         let node = ServiceRunning::restart(context, &self.service);
         RunningMySqlService(node, &())
     }
+
+    /// Return a reference to the actual SystemdService.
+    pub fn inner_service(&self) -> &SystemdService {
+        &self.service
+    }
 }
 
 impl<'a> RunningMySqlService<'a> {

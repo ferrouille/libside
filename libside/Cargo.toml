@@ -1,6 +1,6 @@
 [package]
 name = "libside"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["ferrouille <git@ferrouille.nl>"]
 edition = "2021"
 license = "AGPL-3.0"
