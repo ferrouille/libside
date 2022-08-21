@@ -263,3 +263,19 @@ impl CommandResult {
 #[derive(Debug, thiserror::Error)]
 #[error("This should never happen")]
 pub struct NeverError;
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+    use crate::system::{LocalSystem, System};
+
+    #[test]
+    pub fn test_read_dir() {
+        assert_eq!(LocalSystem.read_dir(&PathBuf::from("test-data/empty-folder")).unwrap(), Vec::<String>::new());
+        let mut v = LocalSystem.read_dir(&PathBuf::from("test-data/folder-folder")).unwrap();
+        v.sort();
+        assert_eq!(v, vec![ String::from("a"), String::from("b"), String::from("c") ]);
+
+        assert!(LocalSystem.path_is_dir(&PathBuf::from("test-data/folder-folder/a")).unwrap());
+    }
+}

@@ -44,6 +44,7 @@ impl Builder for EmptyBuilder {
 }
 
 #[test]
+#[ignore]
 pub fn empty_install() {
     let mut system = LxcInstance::start(LxcInstance::DEFAULT_IMAGE);
     let dirs = Dirs::new("/server");
