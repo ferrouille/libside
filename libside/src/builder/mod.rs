@@ -481,8 +481,8 @@ impl<C: DeserializeOwned> Packages<C> {
         let mut packages = Vec::new();
         for package_path in system.read_dir(package_dir)? {
             let path = PathBuf::from(&package_path);
+            let path = package_dir.join(path);
             if system.path_is_dir(&path)? {
-                let path = package_dir.join(path);
                 let config =
                     toml::from_slice(&system.file_contents(&path.join("package.toml"))?).unwrap();
                 let name = path.file_name().unwrap().to_string_lossy().to_string();
@@ -499,7 +499,7 @@ impl<C: DeserializeOwned> Packages<C> {
 
                 packages.push(Package { info, config });
             } else {
-                panic!("There are files in the packages directory");
+                panic!("There are files in the packages directory: {:?}", path);
             }
         }
 
