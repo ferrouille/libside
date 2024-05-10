@@ -115,10 +115,7 @@ impl BackupData {
 }
 
 impl MySqlData {
-    pub fn create<R: Requirement>(context: &mut Context<R>) -> MySqlData
-    where
-        R: Supports<AptInstall> + Supports<AptUpdate>,
-    {
+    pub fn create<R: Requirement + Supports<AptInstall> + Supports<AptUpdate>>(context: &mut Context<R>) -> MySqlData {
         let mysql = MariaDb::install(context);
 
         MySqlData { mysql }
@@ -140,26 +137,29 @@ struct Status {
     nginx_running: bool,
 }
 
+requirements!(
+    R = 
+    CreateDirectory,
+    FileWithContents,
+    CreateUser,
+    CreateGroup,
+    AptInstall,
+    AptUpdate,
+    ServiceRunning,
+    CreateMySqlDatabase,
+    CreateMySqlUser,
+    CreateMySqlGrant,
+    InstallServices,
+    Delete,
+    EnableService,
+    Chown,
+    Chmod,
+);
+
 impl Builder for Demo {
     type PackageConfig = Config;
     type Data = DemoData;
-    type Requirement = requirements!(
-        CreateDirectory,
-        FileWithContents,
-        CreateUser,
-        CreateGroup,
-        AptInstall,
-        AptUpdate,
-        ServiceRunning,
-        CreateMySqlDatabase,
-        CreateMySqlUser,
-        CreateMySqlGrant,
-        InstallServices,
-        Delete,
-        EnableService,
-        Chown,
-        Chmod,
-    );
+    type Requirement = R;
     type BuildError = BuildError;
 
     fn start_build(

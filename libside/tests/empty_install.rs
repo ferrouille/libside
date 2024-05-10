@@ -12,10 +12,12 @@ struct EmptyError;
 #[derive(Clone, Debug)]
 struct EmptyBuilder;
 
+requirements!(R = CreateDirectory);
+
 impl Builder for EmptyBuilder {
     type PackageConfig = ();
     type Data = ();
-    type Requirement = requirements!(CreateDirectory);
+    type Requirement = R;
     type BuildError = EmptyError;
 
     fn start_build(

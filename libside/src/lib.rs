@@ -1,5 +1,3 @@
-#![feature(generic_associated_types, negative_impls, auto_traits)]
-
 use crate::{builder::Packages, graph::VerificationState};
 use apply::SystemState;
 use builder::{fs::CreateDirectory, Builder};

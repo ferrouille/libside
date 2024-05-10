@@ -1166,15 +1166,15 @@ mod tests {
 
     #[test]
     pub fn apply_revert() {
-        type NodeTy = crate::requirements!(Foo, AlwaysFail);
+        crate::requirements!(NodeTy = Foo, AlwaysFail);
 
         let v0 = Graph::<NodeTy, Applied>::new();
         let mut v1 = Graph::<NodeTy, Pending>::new();
-        let root = v1.add(Supports::create_from(Foo::ROOT), &[]);
-        let a = v1.add(Supports::create_from(Foo::A), &[root]);
-        let b = v1.add(Supports::create_from(Foo::B), &[root]);
-        let c = v1.add(Supports::create_from(Foo::C), &[a, root]);
-        let _end = v1.add(Supports::create_from(Foo::END), &[b, c]);
+        let root = v1.add(Foo::ROOT, &[]);
+        let a = v1.add(Foo::A, &[root]);
+        let b = v1.add(Foo::B, &[root]);
+        let c = v1.add(Foo::C, &[a, root]);
+        let _end = v1.add(Foo::END, &[b, c]);
 
         println!("prev       : {:?}", v0);
         println!("next       : {:?}", v1);
@@ -1202,11 +1202,11 @@ mod tests {
         );
 
         let mut v2 = Graph::<NodeTy, Pending>::new();
-        let root = v2.add(Supports::create_from(Foo::ROOT), &[]);
-        let a = v2.add(Supports::create_from(Foo::A), &[root]);
-        let c = v2.add(Supports::create_from(Foo::C), &[a, root]);
-        let end = v2.add(Supports::create_from(Foo::END), &[c]);
-        let _fail = v2.add(Supports::create_from(AlwaysFail), &[end]);
+        let root = v2.add(Foo::ROOT, &[]);
+        let a = v2.add(Foo::A, &[root]);
+        let c = v2.add(Foo::C, &[a, root]);
+        let end = v2.add(Foo::END, &[c]);
+        let _fail = v2.add(AlwaysFail, &[end]);
 
         println!("prev       : {:?}", v1);
         println!("next       : {:?}", v2);

@@ -187,7 +187,7 @@ pub(crate) fn handle_process_io(
                         );
                         to_write = &to_write[written..];
 
-                        if to_write.len() <= 0 {
+                        if to_write.is_empty() {
                             let stdin = stdin_stream.take().unwrap();
                             drop(stdin);
                         }
