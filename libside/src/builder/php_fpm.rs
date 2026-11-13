@@ -39,6 +39,18 @@ impl PhpVersion for Php80 {
     }
 }
 
+pub struct Php83;
+
+impl PhpVersion for Php83 {
+    const APT_PHP_FPM: &'static str = "php8.3-fpm";
+    const BINARY: &'static str = "/usr/sbin/php-fpm8.3";
+    const SERVICE: &'static str = "php8.3-fpm";
+
+    fn new() -> Self {
+        Php83
+    }
+}
+
 pub struct PhpFpm<V>(GraphNodeReference, V);
 
 impl<V: PhpVersion> AptPackage for PhpFpm<V> {
